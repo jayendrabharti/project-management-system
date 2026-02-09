@@ -1,0 +1,33 @@
+{
+  "name": "project-management-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MERN stack project management system (Clipup clone)",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:client": "pnpm --filter client dev",
+    "dev:server": "pnpm --filter server dev",
+    "build": "pnpm -r build",
+    "build:client": "pnpm --filter client build",
+    "build:server": "pnpm --filter server build",
+    "start": "pnpm --filter server start",
+    "seed": "pnpm --filter server seed",
+    "install-all": "pnpm install",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,scss,md}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,scss,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1"
+  },
+  "keywords": [
+    "project-management",
+    "mern",
+    "pnpm-workspace"
+  ],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
