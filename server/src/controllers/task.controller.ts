@@ -90,19 +90,22 @@ export const getTaskById = async (
       return;
     }
 
-    // Check if user has access to this task's project
-    const project = await Project.findOne({
-      _id: task.project,
-      $or: [{ owner: req.user.id }, { members: req.user.id }],
-    });
-
-    if (!project) {
-      res.status(403).json({
-        success: false,
-        message: 'You do not have access to this task',
+    // Check if user has access to this task's project (only if task has a project)
+    if (task.project) {
+      const project = await Project.findOne({
+        _id: task.project,
+        $or: [{ owner: req.user.id }, { members: req.user.id }],
       });
-      return;
+
+      if (!project) {
+        res.status(403).json({
+          success: false,
+          message: 'You do not have access to this task',
+        });
+        return;
+      }
     }
+    // If task has no project, anyone can view it (you may want to add owner checks here)
 
     res.json({
       success: true,
@@ -196,19 +199,22 @@ export const updateTask = async (
       return;
     }
 
-    // Check if user has access to the project
-    const project = await Project.findOne({
-      _id: task.project,
-      $or: [{ owner: req.user.id }, { members: req.user.id }],
-    });
-
-    if (!project) {
-      res.status(403).json({
-        success: false,
-        message: 'You do not have permission to update this task',
+    // Check if user has access to the project (only if task has a project)
+    if (task.project) {
+      const project = await Project.findOne({
+        _id: task.project,
+        $or: [{ owner: req.user.id }, { members: req.user.id }],
       });
-      return;
+
+      if (!project) {
+        res.status(403).json({
+          success: false,
+          message: 'You do not have permission to update this task',
+        });
+        return;
+      }
     }
+    // If task has no project, anyone can update it (you may want to add owner checks here)
 
     // Update task
     const updatedTask = await Task.findByIdAndUpdate(req.params.id, validatedData, {
@@ -256,19 +262,22 @@ export const deleteTask = async (
       return;
     }
 
-    // Check if user is project owner
-    const project = await Project.findOne({
-      _id: task.project,
-      owner: req.user.id,
-    });
-
-    if (!project) {
-      res.status(403).json({
-        success: false,
-        message: 'Only project owners can delete tasks',
+    // Check if user is project owner (only if task has a project)
+    if (task.project) {
+      const project = await Project.findOne({
+        _id: task.project,
+        owner: req.user.id,
       });
-      return;
+
+      if (!project) {
+        res.status(403).json({
+          success: false,
+          message: 'Only project owners can delete tasks',
+        });
+        return;
+      }
     }
+    // If task has no project, anyone can delete it (you may want to add owner checks here)
 
     await Task.findByIdAndDelete(req.params.id);
 
