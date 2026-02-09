@@ -12,6 +12,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { DatePicker } from './ui/date-picker';
 import { toast } from 'sonner';
 import taskService from '../services/task.service';
 import type { Task, UpdateTaskData } from '../types';
@@ -152,11 +153,12 @@ export default function EditTaskDialog({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="edit-task-dueDate">Due Date</Label>
-              <Input
-                id="edit-task-dueDate"
-                type="date"
-                value={formData.dueDate || ''}
-                onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+              <DatePicker
+                date={formData.dueDate ? new Date(formData.dueDate) : undefined}
+                onDateChange={(date) =>
+                  setFormData({ ...formData, dueDate: date ? date.toISOString() : '' })
+                }
+                placeholder="Select due date"
               />
             </div>
           </div>
