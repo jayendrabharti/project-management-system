@@ -10,7 +10,7 @@
     "build": "pnpm -r build",
     "build:client": "pnpm --filter client build",
     "build:server": "pnpm --filter server build",
-    "start": "pnpm --filter server start",
+    "start": "pnpm -r --parallel start",
     "seed": "pnpm --filter server seed",
     "install-all": "pnpm install",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,scss,md}\"",

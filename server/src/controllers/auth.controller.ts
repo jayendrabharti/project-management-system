@@ -170,3 +170,98 @@ export const getCurrentUser = async (
     next(error);
   }
 };
+
+// Update user profile
+export const updateProfile = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Not authenticated' });
+      return;
+    }
+
+    const updateSchema = z.object({
+      name: z.string().min(1, 'Name is required').optional(),
+      email: z.string().email('Invalid email').optional(),
+    });
+
+    const validated = updateSchema.parse(req.body);
+
+    // Check if email is already taken by another user
+    if (validated.email) {
+      const existingUser = await User.findOne({
+        email: validated.email,
+        _id: { $ne: req.user.id },
+      });
+      if (existingUser) {
+        res.status(400).json({ success: false, message: 'Email already in use' });
+        return;
+      }
+    }
+
+    const user = await User.findByIdAndUpdate(req.user.id, validated, { new: true }).select(
+      '-password'
+    );
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          createdAt: user.createdAt,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Change password
+export const changePassword = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Not authenticated' });
+      return;
+    }
+
+    const passwordSchema = z.object({
+      currentPassword: z.string().min(1, 'Current password is required'),
+      newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+    });
+
+    const { currentPassword, newPassword } = passwordSchema.parse(req.body);
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      res.status(400).json({ success: false, message: 'Current password is incorrect' });
+      return;
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (error) {
+    next(error);
+  }
+};

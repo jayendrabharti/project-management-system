@@ -2,7 +2,12 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import About from './pages/About';
 import Projects from './pages/Projects';
+import ProjectDetail from './pages/ProjectDetail';
 import Tasks from './pages/Tasks';
+import Team from './pages/Team';
+import CalendarPage from './pages/Calendar';
+import Analytics from './pages/Analytics';
+import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Layout from './components/Layout';
@@ -44,6 +49,16 @@ export default function App() {
               }
             />
             <Route
+              path="/projects/:id"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <ProjectDetail />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/tasks"
               element={
                 <ProtectedRoute>
@@ -68,7 +83,7 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Layout>
-                    <div className="text-2xl font-bold">Calendar Page (Coming Soon)</div>
+                    <CalendarPage />
                   </Layout>
                 </ProtectedRoute>
               }
@@ -78,7 +93,7 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Layout>
-                    <div className="text-2xl font-bold">Team Page (Coming Soon)</div>
+                    <Team />
                   </Layout>
                 </ProtectedRoute>
               }
@@ -88,7 +103,7 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Layout>
-                    <div className="text-2xl font-bold">Analytics Page (Coming Soon)</div>
+                    <Analytics />
                   </Layout>
                 </ProtectedRoute>
               }
@@ -98,7 +113,7 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Layout>
-                    <div className="text-2xl font-bold">Settings Page (Coming Soon)</div>
+                    <Settings />
                   </Layout>
                 </ProtectedRoute>
               }

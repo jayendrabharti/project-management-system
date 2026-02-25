@@ -7,13 +7,15 @@ import { errorHandler } from './middleware/errorHandler';
 import authRoutes from './routes/auth.routes';
 import projectRoutes from './routes/project.routes';
 import taskRoutes from './routes/task.routes';
-
-// Load environment variables
+import userRoutes from './routes/user.routes';
+import commentRoutes from './routes/comment.routes';
+import analyticsRoutes from './routes/analytics.routes';
+import searchRoutes from './routes/search.routes';
 dotenv.config();
 
 // Create Express app
 const app: Application = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 // Connect to database
 connectDB();
@@ -21,7 +23,7 @@ connectDB();
 // Middleware
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
     credentials: true,
   })
 );
@@ -42,6 +44,10 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api', commentRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/search', searchRoutes);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
