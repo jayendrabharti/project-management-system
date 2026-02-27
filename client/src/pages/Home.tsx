@@ -10,26 +10,27 @@ import {
   AlertTriangle,
   Sparkles,
   ListTodo,
+  Activity,
 } from 'lucide-react';
-import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Progress } from '../components/ui/progress';
 import { Skeleton } from '../components/ui/skeleton';
-import CreateProjectDialog from '../components/CreateProjectDialog';
 import projectService from '../services/project.service';
 import taskService from '../services/task.service';
-import type { Project, Task } from '../types';
+import activityService from '../services/activity.service';
+import type { Project, Task, ActivityLog } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { format, isAfter, isBefore, addDays } from 'date-fns';
 
 export default function Home() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
@@ -37,35 +38,20 @@ export default function Home() {
 
   const loadData = async () => {
     try {
-      setLoading(true);
-      const [projectsData, tasksData] = await Promise.all([
+      const [p, t, a] = await Promise.all([
         projectService.getProjects(),
-        taskService.getTasks({}),
+        taskService.getTasks(),
+        activityService.getActivity(15),
       ]);
-      setProjects(projectsData);
-      setTasks(tasksData);
-    } catch (err) {
-      console.error('Failed to load dashboard data:', err);
+      setProjects(p);
+      setTasks(t);
+      setActivities(a);
+    } catch {
+      // fail silently
     } finally {
       setLoading(false);
     }
   };
-
-  const firstName = user?.name?.split(' ')[0] || 'there';
-  const activeTasks = tasks.filter((t) => t.status !== 'completed').length;
-  const completedTasks = tasks.filter((t) => t.status === 'completed').length;
-  const inProgressTasks = tasks.filter((t) => t.status === 'in-progress').length;
-  const overdueTasks = tasks.filter(
-    (t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'completed'
-  );
-  const completionRate = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0;
-
-  const recentTasks = tasks
-    .filter((t) => t.status !== 'completed')
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, 5);
-
-  const recentProjects = projects.slice(0, 4);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -74,292 +60,325 @@ export default function Home() {
     return 'Good evening';
   };
 
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter((t) => t.status === 'completed').length;
+  const overdueTasks = tasks.filter(
+    (t) => t.dueDate && isBefore(new Date(t.dueDate), new Date()) && t.status !== 'completed'
+  ).length;
+  const inProgressTasks = tasks.filter((t) => t.status === 'in-progress').length;
+  const activeProjects = projects.filter((p) => p.status === 'active').length;
+
+  const upcomingTasks = tasks
+    .filter(
+      (t) =>
+        t.dueDate &&
+        t.status !== 'completed' &&
+        isBefore(new Date(t.dueDate), addDays(new Date(), 7)) &&
+        isAfter(new Date(t.dueDate), new Date())
+    )
+    .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+    .slice(0, 5);
+
+  const recentProjects = projects.slice(0, 4);
+
   const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'text-red-500 bg-red-500/10';
-      case 'medium':
-        return 'text-amber-500 bg-amber-500/10';
-      case 'low':
-        return 'text-blue-500 bg-blue-500/10';
-      default:
-        return 'text-gray-500 bg-gray-500/10';
-    }
+    const map: Record<string, string> = {
+      urgent: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20',
+      high: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/20',
+      medium: 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border-yellow-500/20',
+      low: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/20',
+      none: 'bg-muted text-muted-foreground border-border',
+    };
+    return map[priority] || map.none;
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'in-progress':
-        return <Clock className="h-3.5 w-3.5 text-amber-500" />;
-      case 'completed':
-        return <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />;
-      default:
-        return <ListTodo className="h-3.5 w-3.5 text-blue-500" />;
-    }
+  const getStatusColor = (status: string) => {
+    const map: Record<string, string> = {
+      todo: 'bg-muted text-muted-foreground',
+      'in-progress': 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
+      'in-review': 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+      completed: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+    };
+    return map[status] || '';
   };
+
+  const stats = [
+    {
+      title: 'Total Tasks',
+      value: totalTasks,
+      icon: ListTodo,
+      color: 'text-primary',
+      bg: 'bg-primary/10',
+    },
+    {
+      title: 'Completed',
+      value: completedTasks,
+      icon: CheckCircle,
+      color: 'text-emerald-500',
+      bg: 'bg-emerald-500/10',
+    },
+    {
+      title: 'In Progress',
+      value: inProgressTasks,
+      icon: TrendingUp,
+      color: 'text-blue-500',
+      bg: 'bg-blue-500/10',
+    },
+    {
+      title: 'Overdue',
+      value: overdueTasks,
+      icon: AlertTriangle,
+      color: 'text-red-500',
+      bg: 'bg-red-500/10',
+    },
+  ];
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-32 rounded-xl" />
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-28 rounded-xl" />
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Skeleton className="h-72 rounded-xl lg:col-span-2" />
-          <Skeleton className="h-72 rounded-xl" />
+          <Skeleton className="h-80 rounded-xl lg:col-span-2" />
+          <Skeleton className="h-80 rounded-xl" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary/10 via-primary/5 to-background border border-border p-6">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-        <div className="relative flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="h-5 w-5 text-primary" />
-              <span className="text-sm text-muted-foreground">{getGreeting()}</span>
-            </div>
-            <h1 className="text-2xl font-bold text-foreground">{firstName}!</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              {activeTasks > 0
-                ? `You have ${activeTasks} active task${activeTasks !== 1 ? 's' : ''} across ${projects.length} project${projects.length !== 1 ? 's' : ''}.`
-                : 'No active tasks. Create a project to get started!'}
-            </p>
-          </div>
-          <Button onClick={() => setCreateProjectOpen(true)} className="gap-2 shadow-sm">
-            <Plus className="h-4 w-4" />
+    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {getGreeting()}, <span className="gradient-text">{user?.name?.split(' ')[0]}</span>
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Here's what's happening across your projects today.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => navigate('/projects')}
+          >
+            <FolderKanban className="h-4 w-4" />
             New Project
+          </Button>
+          <Button size="sm" className="gap-1.5" onClick={() => navigate('/tasks')}>
+            <Plus className="h-4 w-4" />
+            New Task
           </Button>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card
-          className="group hover:shadow-md transition-shadow duration-200 cursor-pointer"
-          onClick={() => navigate('/projects')}
-        >
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="h-9 w-9 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                <FolderKanban className="h-4.5 w-4.5 text-violet-500" />
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all" />
-            </div>
-            <p className="text-2xl font-bold">{projects.length}</p>
-            <p className="text-xs text-muted-foreground">
-              {projects.filter((p) => p.status === 'active').length} active
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="group hover:shadow-md transition-shadow duration-200 cursor-pointer"
-          onClick={() => navigate('/tasks')}
-        >
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="h-9 w-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                <ListTodo className="h-4.5 w-4.5 text-blue-500" />
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all" />
-            </div>
-            <p className="text-2xl font-bold">{activeTasks}</p>
-            <p className="text-xs text-muted-foreground">{inProgressTasks} in progress</p>
-          </CardContent>
-        </Card>
-
-        <Card className="group hover:shadow-md transition-shadow duration-200">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="h-9 w-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                <TrendingUp className="h-4.5 w-4.5 text-emerald-500" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold">{completionRate}%</p>
-            <p className="text-xs text-muted-foreground">{completedTasks} completed</p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`group hover:shadow-md transition-shadow duration-200 ${overdueTasks.length > 0 ? 'border-red-500/30' : ''}`}
-        >
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center justify-between mb-2">
-              <div
-                className={`h-9 w-9 rounded-lg flex items-center justify-center ${overdueTasks.length > 0 ? 'bg-red-500/10' : 'bg-muted'}`}
-              >
-                <AlertTriangle
-                  className={`h-4.5 w-4.5 ${overdueTasks.length > 0 ? 'text-red-500' : 'text-muted-foreground'}`}
-                />
-              </div>
-            </div>
-            <p className="text-2xl font-bold">{overdueTasks.length}</p>
-            <p className="text-xs text-muted-foreground">overdue tasks</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in-list">
+        {stats.map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <Card key={stat.title} className="card-hover border-border/50">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground font-medium">{stat.title}</p>
+                    <p className="text-3xl font-bold mt-1">{stat.value}</p>
+                  </div>
+                  <div
+                    className={`h-11 w-11 rounded-xl ${stat.bg} flex items-center justify-center`}
+                  >
+                    <Icon className={`h-5 w-5 ${stat.color}`} />
+                  </div>
+                </div>
+                {stat.title === 'Total Tasks' && totalTasks > 0 && (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>Progress</span>
+                      <span>{Math.round((completedTasks / totalTasks) * 100)}%</span>
+                    </div>
+                    <Progress value={(completedTasks / totalTasks) * 100} className="h-1.5" />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Tasks */}
-        <Card className="lg:col-span-2">
+        {/* Projects */}
+        <Card className="lg:col-span-2 border-border/50">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Recent Tasks</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs gap-1"
-                onClick={() => navigate('/tasks')}
-              >
-                View all <ArrowRight className="h-3 w-3" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {recentTasks.length === 0 ? (
-              <div className="text-center py-8">
-                <ListTodo className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No active tasks</p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {recentTasks.map((task) => (
-                  <div
-                    key={task._id}
-                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent/50 transition-colors cursor-pointer group"
-                    onClick={() => navigate('/tasks')}
-                  >
-                    {getStatusIcon(task.status)}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{task.title}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {task.project && typeof task.project === 'object' && (
-                          <span className="text-[11px] text-muted-foreground truncate">
-                            {(task.project as any).name}
-                          </span>
-                        )}
-                        {task.dueDate && (
-                          <span
-                            className={`text-[11px] ${new Date(task.dueDate) < new Date() && task.status !== 'completed' ? 'text-red-500' : 'text-muted-foreground'}`}
-                          >
-                            {new Date(task.dueDate).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <Badge
-                      className={`text-[10px] ${getPriorityColor(task.priority)}`}
-                      variant="secondary"
-                    >
-                      {task.priority}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Projects Overview */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Projects</CardTitle>
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <FolderKanban className="h-4 w-4 text-primary" />
+                Active Projects
+                <Badge variant="secondary" className="text-xs">
+                  {activeProjects}
+                </Badge>
+              </CardTitle>
               <Button
                 variant="ghost"
                 size="sm"
                 className="text-xs gap-1"
                 onClick={() => navigate('/projects')}
               >
-                View all <ArrowRight className="h-3 w-3" />
+                View All <ArrowRight className="h-3 w-3" />
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             {recentProjects.length === 0 ? (
-              <div className="text-center py-8">
-                <FolderKanban className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No projects yet</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-3 gap-1.5 text-xs"
-                  onClick={() => setCreateProjectOpen(true)}
-                >
-                  <Plus className="h-3 w-3" /> Create project
-                </Button>
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                <FolderKanban className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                No projects yet. Create your first project!
               </div>
             ) : (
-              <div className="space-y-3">
-                {recentProjects.map((project) => {
-                  const projectTasks = tasks.filter(
-                    (t) =>
-                      (typeof t.project === 'string' ? t.project : (t.project as any)?._id) ===
-                      project._id
-                  );
-                  const done = projectTasks.filter((t) => t.status === 'completed').length;
-                  const progress =
-                    projectTasks.length > 0 ? Math.round((done / projectTasks.length) * 100) : 0;
-
-                  return (
+              recentProjects.map((project) => {
+                const progress =
+                  project.taskCount && project.taskCount > 0
+                    ? Math.round(((project.completedTaskCount || 0) / project.taskCount) * 100)
+                    : 0;
+                return (
+                  <div
+                    key={project._id}
+                    className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors group"
+                    onClick={() => navigate(`/projects/${project._id}`)}
+                  >
                     <div
-                      key={project._id}
-                      className="p-3 rounded-lg border border-border hover:bg-accent/30 transition-colors cursor-pointer"
-                      onClick={() => navigate(`/projects/${project._id}`)}
+                      className="h-10 w-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0"
+                      style={{ backgroundColor: project.color + '20' }}
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-medium truncate">{project.name}</h3>
-                        <Badge variant="secondary" className="text-[10px]">
+                      {project.icon || '📁'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm truncate group-hover:text-primary transition-colors">
+                          {project.name}
+                        </p>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] capitalize ${project.status === 'active' ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400' : ''}`}
+                        >
                           {project.status}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Progress value={progress} className="h-1.5 flex-1" />
-                        <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                          {progress}%
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-xs text-muted-foreground">
+                          {project.completedTaskCount || 0}/{project.taskCount || 0} tasks
                         </span>
-                      </div>
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="flex -space-x-1.5">
-                          {Array.isArray(project.members) &&
-                            project.members.slice(0, 3).map((member, i) => (
-                              <Avatar key={i} className="h-5 w-5 border border-background">
-                                <AvatarFallback className="text-[9px]">
-                                  {typeof member === 'string' ? 'U' : member.name?.charAt(0) || 'U'}
-                                </AvatarFallback>
-                              </Avatar>
-                            ))}
-                        </div>
-                        <span className="text-[11px] text-muted-foreground">
-                          {projectTasks.length} tasks
-                        </span>
+                        <Progress value={progress} className="h-1 flex-1 max-w-[100px]" />
+                        <span className="text-xs text-muted-foreground">{progress}%</span>
                       </div>
                     </div>
-                  );
-                })}
+                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Upcoming Deadlines */}
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Clock className="h-4 w-4 text-primary" />
+              Upcoming Deadlines
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {upcomingTasks.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                <CheckCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                No upcoming deadlines. You're all caught up!
               </div>
+            ) : (
+              upcomingTasks.map((task) => (
+                <div
+                  key={task._id}
+                  className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => navigate('/tasks')}
+                >
+                  <div
+                    className={`h-2 w-2 rounded-full mt-1.5 flex-shrink-0 ${
+                      task.priority === 'urgent'
+                        ? 'bg-red-500'
+                        : task.priority === 'high'
+                          ? 'bg-orange-500'
+                          : task.priority === 'medium'
+                            ? 'bg-yellow-500'
+                            : 'bg-blue-500'
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{task.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Due {format(new Date(task.dueDate!), 'MMM d')}
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${getPriorityColor(task.priority)}`}
+                  >
+                    {task.priority}
+                  </Badge>
+                </div>
+              ))
             )}
           </CardContent>
         </Card>
       </div>
 
-      <CreateProjectDialog
-        open={createProjectOpen}
-        onOpenChange={setCreateProjectOpen}
-        onSuccess={loadData}
-      />
+      {/* Activity Feed */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary" />
+              Recent Activity
+            </CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {activities.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground text-sm">
+              <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              No activity yet. Start creating tasks and projects!
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[300px] overflow-y-auto">
+              {activities.slice(0, 10).map((activity) => (
+                <div key={activity._id} className="flex items-start gap-3 text-sm">
+                  <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-semibold text-primary flex-shrink-0 mt-0.5">
+                    {activity.user?.name?.[0] || '?'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm">
+                      <span className="font-medium">{activity.user?.name}</span>
+                      <span className="text-muted-foreground"> {activity.action} </span>
+                      <span className="font-medium">{activity.entityName}</span>
+                    </p>
+                    {activity.details && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{activity.details}</p>
+                    )}
+                    <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                      {format(new Date(activity.createdAt), 'MMM d, h:mm a')}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

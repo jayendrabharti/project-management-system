@@ -1,6 +1,14 @@
 import mongoose, { Schema } from 'mongoose';
 import { ITask } from '../types';
 
+const subtaskSchema = new Schema(
+  {
+    title: { type: String, required: true, trim: true },
+    completed: { type: Boolean, default: false },
+  },
+  { _id: true }
+);
+
 const taskSchema = new Schema<ITask>(
   {
     title: {
@@ -17,12 +25,12 @@ const taskSchema = new Schema<ITask>(
     },
     status: {
       type: String,
-      enum: ['todo', 'in-progress', 'completed'],
+      enum: ['todo', 'in-progress', 'in-review', 'completed'],
       default: 'todo',
     },
     priority: {
       type: String,
-      enum: ['low', 'medium', 'high'],
+      enum: ['urgent', 'high', 'medium', 'low', 'none'],
       default: 'medium',
     },
     project: {
@@ -34,8 +42,29 @@ const taskSchema = new Schema<ITask>(
       type: Schema.Types.ObjectId,
       ref: 'User',
     },
+    createdBy: {
+      type: Schema.Types.ObjectId as any,
+      ref: 'User',
+      required: true,
+    },
     dueDate: {
       type: Date,
+    },
+    labels: {
+      type: [String],
+      default: [],
+    },
+    tags: {
+      type: [String],
+      default: [],
+    },
+    subtasks: {
+      type: [subtaskSchema],
+      default: [],
+    },
+    order: {
+      type: Number,
+      default: 0,
     },
   },
   {
@@ -46,6 +75,8 @@ const taskSchema = new Schema<ITask>(
 // Indexes for faster queries
 taskSchema.index({ project: 1, status: 1 });
 taskSchema.index({ assignedTo: 1, status: 1 });
+taskSchema.index({ createdBy: 1 });
 taskSchema.index({ priority: 1 });
+taskSchema.index({ labels: 1 });
 
 export default mongoose.model<ITask>('Task', taskSchema);

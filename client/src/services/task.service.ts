@@ -6,6 +6,7 @@ export interface TaskFilters {
   status?: string;
   priority?: string;
   assignedTo?: string;
+  labels?: string;
 }
 
 export const getTasks = async (filters?: TaskFilters): Promise<Task[]> => {
@@ -30,6 +31,13 @@ export const updateTask = async (id: string, data: UpdateTaskData): Promise<Task
   return response.data.data!.task;
 };
 
+export const toggleSubtask = async (taskId: string, subtaskId: string): Promise<Task> => {
+  const response = await api.patch<ApiResponse<{ task: Task }>>(
+    `/tasks/${taskId}/subtasks/${subtaskId}/toggle`
+  );
+  return response.data.data!.task;
+};
+
 export const deleteTask = async (id: string): Promise<void> => {
   await api.delete(`/tasks/${id}`);
 };
@@ -39,6 +47,7 @@ const taskService = {
   getTask,
   createTask,
   updateTask,
+  toggleSubtask,
   deleteTask,
 };
 

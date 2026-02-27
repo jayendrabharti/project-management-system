@@ -1,4 +1,5 @@
 import { Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import Task from '../models/Task';
 import Project from '../models/Project';
 import { AuthRequest } from '../types';
@@ -15,13 +16,19 @@ export const getAnalytics = async (
       return;
     }
 
-    const userId = req.user.id;
+    const userId = new mongoose.Types.ObjectId(req.user.id);
+
+    // Get user's projects
+    const userProjects = await Project.find({
+      $or: [{ owner: userId }, { members: userId }],
+    }).select('_id');
+    const projectIds = userProjects.map((p) => p._id);
 
     // Task stats by status
     const tasksByStatus = await Task.aggregate([
       {
         $match: {
-          $or: [{ assignedTo: userId }, { createdBy: userId }],
+          $or: [{ project: { $in: projectIds } }, { assignedTo: userId }, { createdBy: userId }],
         },
       },
       { $group: { _id: '$status', count: { $sum: 1 } } },
@@ -31,7 +38,7 @@ export const getAnalytics = async (
     const tasksByPriority = await Task.aggregate([
       {
         $match: {
-          $or: [{ assignedTo: userId }, { createdBy: userId }],
+          $or: [{ project: { $in: projectIds } }, { assignedTo: userId }, { createdBy: userId }],
         },
       },
       { $group: { _id: '$priority', count: { $sum: 1 } } },
@@ -56,6 +63,7 @@ export const getAnalytics = async (
         $match: {
           status: 'completed',
           updatedAt: { $gte: sevenDaysAgo },
+          $or: [{ project: { $in: projectIds } }, { assignedTo: userId }, { createdBy: userId }],
         },
       },
       {
@@ -67,15 +75,26 @@ export const getAnalytics = async (
       { $sort: { _id: 1 } },
     ]);
 
-    // Total counts
+    // Total counts (scoped to user)
     const [totalTasks, totalProjects, overdueTasks] = await Promise.all([
-      Task.countDocuments({}),
-      Project.countDocuments({}),
+      Task.countDocuments({
+        $or: [{ project: { $in: projectIds } }, { assignedTo: userId }, { createdBy: userId }],
+      }),
+      Project.countDocuments({
+        $or: [{ owner: userId }, { members: userId }],
+      }),
       Task.countDocuments({
         dueDate: { $lt: new Date() },
         status: { $ne: 'completed' },
+        $or: [{ project: { $in: projectIds } }, { assignedTo: userId }, { createdBy: userId }],
       }),
     ]);
+
+    // Completed tasks count
+    const completedTasks = await Task.countDocuments({
+      status: 'completed',
+      $or: [{ project: { $in: projectIds } }, { assignedTo: userId }, { createdBy: userId }],
+    });
 
     res.json({
       success: true,
@@ -91,6 +110,7 @@ export const getAnalytics = async (
           tasks: totalTasks,
           projects: totalProjects,
           overdue: overdueTasks,
+          completed: completedTasks,
         },
       },
     });

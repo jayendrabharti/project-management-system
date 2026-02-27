@@ -1,448 +1,502 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, LayoutGrid, List, Plus, Users, Calendar, Edit } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft,
+  Users,
+  Activity,
+  LayoutGrid,
+  List,
+  Trash2,
+  Edit,
+  Plus,
+  UserPlus,
+  UserMinus,
+} from 'lucide-react';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Skeleton } from '../components/ui/skeleton';
 import { Progress } from '../components/ui/progress';
-import { toast } from 'sonner';
+import { Skeleton } from '../components/ui/skeleton';
+import { Input } from '../components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import KanbanBoard from '../components/KanbanBoard';
-import TaskCard from '../components/TaskCard';
 import CreateTaskDialog from '../components/CreateTaskDialog';
-import EditTaskDialog from '../components/EditTaskDialog';
 import EditProjectDialog from '../components/EditProjectDialog';
+import TaskDetailDrawer from '../components/TaskDetailDrawer';
 import projectService from '../services/project.service';
 import taskService from '../services/task.service';
-import type { Project, Task } from '../types';
+import activityService from '../services/activity.service';
+import userService from '../services/user.service';
+import type { Project, Task, User, ActivityLog } from '../types';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [taskView, setTaskView] = useState<'kanban' | 'list'>('kanban');
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editProjectOpen, setEditProjectOpen] = useState(false);
-  const [editTaskOpen, setEditTaskOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [taskView, setTaskView] = useState<'board' | 'list'>('board');
 
-  const loadData = useCallback(async () => {
-    if (!id) return;
+  // Dialogs
+  const [createTaskOpen, setCreateTaskOpen] = useState(false);
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  // Member management
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [addingMember, setAddingMember] = useState(false);
+
+  useEffect(() => {
+    if (id) loadData();
+  }, [id]);
+
+  const loadData = async () => {
     try {
-      setLoading(true);
-      const [projectData, tasksData] = await Promise.all([
-        projectService.getProject(id),
+      const [p, t, a] = await Promise.all([
+        projectService.getProject(id!),
         taskService.getTasks({ project: id }),
+        activityService.getProjectActivity(id!),
       ]);
-      setProject(projectData);
-      setTasks(tasksData);
-    } catch (err: any) {
-      console.error('Failed to load project:', err);
-      toast.error('Error', { description: 'Failed to load project details' });
+      setProject(p);
+      setTasks(t);
+      setActivities(a);
+    } catch {
+      toast.error('Failed to load project');
     } finally {
       setLoading(false);
     }
-  }, [id]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleTaskClick = (task: Task) => {
-    setSelectedTask(task);
-    setEditTaskOpen(true);
   };
 
-  const handleDeleteTask = async (task: Task) => {
-    if (!confirm(`Delete "${task.title}"?`)) return;
+  const loadUsers = async () => {
     try {
-      await taskService.deleteTask(task._id);
-      toast.success('Task deleted');
-      loadData();
-    } catch (error: any) {
-      toast.error('Error', { description: error.message || 'Failed to delete task' });
+      const users = await userService.getUsers();
+      setAllUsers(users);
+    } catch {
+      // silent
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary'> = {
-      active: 'default',
-      completed: 'secondary',
-      archived: 'secondary',
-    };
-    return variants[status] || 'secondary';
+  const handleDelete = async () => {
+    if (!confirm('Delete this project and all its tasks?')) return;
+    try {
+      await projectService.deleteProject(id!);
+      toast.success('Project deleted');
+      navigate('/projects');
+    } catch {
+      toast.error('Failed to delete project');
+    }
   };
 
-  // Stats
-  const todoCount = tasks.filter((t) => t.status === 'todo').length;
-  const inProgressCount = tasks.filter((t) => t.status === 'in-progress').length;
-  const completedCount = tasks.filter((t) => t.status === 'completed').length;
-  const progressPercent = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
+  const handleAddMember = async (userId: string) => {
+    if (!project) return;
+    setAddingMember(true);
+    try {
+      const currentMemberIds = (project.members as User[]).map((m: any) => m._id || m);
+      await projectService.updateProject(project._id, {
+        members: [...currentMemberIds, userId],
+      });
+      toast.success('Member added');
+      loadData();
+      setMemberSearch('');
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to add member');
+    } finally {
+      setAddingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!project || !confirm('Remove this member from the project?')) return;
+    try {
+      const currentMemberIds = (project.members as User[])
+        .map((m: any) => m._id || m)
+        .filter((mid: string) => mid !== userId);
+      await projectService.updateProject(project._id, {
+        members: currentMemberIds,
+      });
+      toast.success('Member removed');
+      loadData();
+    } catch {
+      toast.error('Failed to remove member');
+    }
+  };
+
+  const handleTaskClick = (task: Task) => {
+    setDetailTask(task);
+    setDetailOpen(true);
+  };
+
+  const getPriorityDot = (p: string) => {
+    const m: Record<string, string> = {
+      urgent: 'bg-red-500',
+      high: 'bg-orange-500',
+      medium: 'bg-yellow-500',
+      low: 'bg-blue-500',
+      none: 'bg-muted-foreground/30',
+    };
+    return m[p] || m.none;
+  };
+
+  const getStatusBadge = (s: string) => {
+    const map: Record<string, string> = {
+      todo: 'bg-muted text-muted-foreground',
+      'in-progress': 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
+      'in-review': 'bg-amber-500/15 text-amber-600',
+      completed: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+    };
+    return map[s] || '';
+  };
 
   if (loading) {
     return (
-      <div>
-        <Skeleton className="h-8 w-64 mb-2" />
-        <Skeleton className="h-4 w-96 mb-6" />
-        <div className="grid grid-cols-4 gap-4 mb-6">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24" />
-          ))}
-        </div>
-        <Skeleton className="h-96" />
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-32 rounded-xl" />
+        <Skeleton className="h-80 rounded-xl" />
       </div>
     );
   }
 
   if (!project) {
-    return (
-      <div className="text-center py-16">
-        <h2 className="text-2xl font-bold text-foreground mb-2">Project not found</h2>
-        <p className="text-muted-foreground mb-4">
-          The project you're looking for doesn't exist or you don't have access.
-        </p>
-        <Link to="/projects">
-          <Button>
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back to Projects
-          </Button>
-        </Link>
-      </div>
-    );
+    return <div className="p-6 text-center text-muted-foreground">Project not found</div>;
   }
 
-  const members = Array.isArray(project.members) ? project.members : [];
+  const progress =
+    project.taskCount && project.taskCount > 0
+      ? Math.round(((project.completedTaskCount || 0) / project.taskCount) * 100)
+      : 0;
+
+  const members = (project.members || []) as User[];
+  const owner = project.owner as User;
+  const existingMemberIds = new Set([...members.map((m: any) => m._id || m), (owner as any)?._id]);
+  const filteredUsers = allUsers.filter(
+    (u) =>
+      !existingMemberIds.has(u._id) && u.name?.toLowerCase().includes(memberSearch.toLowerCase())
+  );
 
   return (
-    <div>
-      {/* Breadcrumb / Back Navigation */}
-      <div className="flex items-center gap-2 mb-4 text-sm">
-        <Link
-          to="/projects"
-          className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Projects
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="text-foreground font-medium">{project.name}</span>
-      </div>
-
+    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="mt-0.5"
+            onClick={() => navigate('/projects')}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-foreground">{project.name}</h1>
-            <Badge variant={getStatusBadge(project.status)}>
-              {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-            </Badge>
+            <div
+              className="h-12 w-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
+              style={{ backgroundColor: (project.color || '#7c3aed') + '20' }}
+            >
+              {project.icon || '📁'}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold">{project.name}</h1>
+                <Badge
+                  variant="outline"
+                  className={`capitalize text-xs ${
+                    project.status === 'active'
+                      ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                      : project.status === 'completed'
+                        ? 'border-blue-500/30 text-blue-600'
+                        : 'text-muted-foreground'
+                  }`}
+                >
+                  {project.status}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground mt-0.5">{project.description}</p>
+            </div>
           </div>
-          {project.description && (
-            <p className="text-muted-foreground mt-1 max-w-2xl">{project.description}</p>
-          )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setEditProjectOpen(true)}>
-            <Edit className="h-4 w-4 mr-1" /> Edit
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" onClick={() => setEditProjectOpen(true)}>
+            <Edit className="h-4 w-4" />
           </Button>
-          <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Add Task
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-destructive hover:text-destructive"
+            onClick={handleDelete}
+          >
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Total Tasks</p>
-            <p className="text-2xl font-bold">{tasks.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">To Do</p>
-            <p className="text-2xl font-bold text-blue-500">{todoCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">In Progress</p>
-            <p className="text-2xl font-bold text-yellow-500">{inProgressCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Completed</p>
-            <p className="text-2xl font-bold text-green-500">{completedCount}</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Progress bar */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-muted-foreground">Progress</span>
-          <span className="text-sm font-bold text-foreground">{progressPercent}%</span>
-        </div>
-        <Progress value={progressPercent} className="h-2" />
-      </div>
+      <Card className="border-border/50">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-2 text-sm">
+            <span className="text-muted-foreground">Overall Progress</span>
+            <span className="font-semibold">{progress}%</span>
+          </div>
+          <Progress value={progress} className="h-2" />
+          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+            <span>{project.completedTaskCount || 0} completed</span>
+            <span>{(project.taskCount || 0) - (project.completedTaskCount || 0)} remaining</span>
+            <span>{members.length + 1} members</span>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Tabs */}
       <Tabs defaultValue="tasks" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="tasks">Tasks</TabsTrigger>
-          <TabsTrigger value="members">Members</TabsTrigger>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="tasks" className="gap-1.5 text-xs">
+            <LayoutGrid className="h-3.5 w-3.5" /> Tasks
+          </TabsTrigger>
+          <TabsTrigger
+            value="members"
+            className="gap-1.5 text-xs"
+            onClick={() => allUsers.length === 0 && loadUsers()}
+          >
+            <Users className="h-3.5 w-3.5" /> Members
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="gap-1.5 text-xs">
+            <Activity className="h-3.5 w-3.5" /> Activity
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="tasks" className="space-y-4">
-          {/* View Toggle */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Tasks ({tasks.length})</h2>
-            <div className="flex gap-1 border border-border rounded-lg p-1">
+        <TabsContent value="tasks">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex border border-border rounded-lg overflow-hidden">
               <Button
-                variant={taskView === 'kanban' ? 'default' : 'ghost'}
+                variant={taskView === 'board' ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-7 px-2"
-                onClick={() => setTaskView('kanban')}
+                className="rounded-none h-8 text-xs gap-1"
+                onClick={() => setTaskView('board')}
               >
-                <LayoutGrid className="h-3.5 w-3.5 mr-1" />
-                Board
+                <LayoutGrid className="h-3.5 w-3.5" /> Board
               </Button>
               <Button
-                variant={taskView === 'list' ? 'default' : 'ghost'}
+                variant={taskView === 'list' ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-7 px-2"
+                className="rounded-none h-8 text-xs gap-1"
                 onClick={() => setTaskView('list')}
               >
-                <List className="h-3.5 w-3.5 mr-1" />
-                List
+                <List className="h-3.5 w-3.5" /> List
               </Button>
             </div>
+            <Badge variant="secondary" className="text-xs">
+              {tasks.length} tasks
+            </Badge>
+            <Button size="sm" className="ml-auto gap-1" onClick={() => setCreateTaskOpen(true)}>
+              <Plus className="h-3.5 w-3.5" /> Add Task
+            </Button>
           </div>
 
-          {taskView === 'kanban' ? (
-            <KanbanBoard
-              tasks={tasks}
-              onTaskClick={handleTaskClick}
-              onTaskUpdated={loadData}
-              onCreateTask={() => setCreateDialogOpen(true)}
-            />
+          {taskView === 'board' ? (
+            <KanbanBoard tasks={tasks} onTaskUpdate={loadData} onTaskClick={handleTaskClick} />
           ) : (
-            <Card>
-              <CardContent className="pt-4">
-                {tasks.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No tasks yet. Create your first task!
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {tasks.map((task) => (
-                      <div
-                        key={task._id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent transition-colors group"
+            <div className="space-y-2">
+              {tasks.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-sm text-muted-foreground">No tasks yet.</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 gap-1"
+                    onClick={() => setCreateTaskOpen(true)}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Create First Task
+                  </Button>
+                </div>
+              ) : (
+                tasks.map((task) => (
+                  <div
+                    key={task._id}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors cursor-pointer group"
+                    onClick={() => handleTaskClick(task)}
+                  >
+                    <div className={`h-2.5 w-2.5 rounded-full ${getPriorityDot(task.priority)}`} />
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`text-sm font-medium truncate ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}
                       >
-                        <div className="flex-1">
-                          <TaskCard task={task} onClick={handleTaskClick} />
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 opacity-0 group-hover:opacity-100 text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteTask(task);
-                          }}
-                        >
-                          ×
-                        </Button>
+                        {task.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                        {task.dueDate && <span>Due {format(new Date(task.dueDate), 'MMM d')}</span>}
+                        {task.subtasks && task.subtasks?.length > 0 && (
+                          <span>
+                            {task.subtasks.filter((s) => s.completed).length}/{task.subtasks.length}{' '}
+                            subtasks
+                          </span>
+                        )}
                       </div>
-                    ))}
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] capitalize ${getStatusBadge(task.status)}`}
+                    >
+                      {task.status.replace('-', ' ')}
+                    </Badge>
+                    {task.assignedTo && typeof task.assignedTo === 'object' && (
+                      <div
+                        className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-semibold text-primary"
+                        title={(task.assignedTo as User).name}
+                      >
+                        {(task.assignedTo as User).name?.[0]}
+                      </div>
+                    )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                ))
+              )}
+            </div>
           )}
         </TabsContent>
 
         <TabsContent value="members">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Members ({members.length + 1})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {/* Owner */}
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                  <Avatar className="h-10 w-10">
-                    <AvatarFallback>
-                      {typeof project.owner === 'string'
-                        ? 'O'
-                        : project.owner.name
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')
-                            .toUpperCase()
-                            .slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <p className="font-medium">
-                      {typeof project.owner === 'string' ? 'Owner' : project.owner.name}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {typeof project.owner === 'string' ? '' : project.owner.email}
-                    </p>
-                  </div>
-                  <Badge>Owner</Badge>
-                </div>
-
-                {/* Members */}
-                {members.map((member, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-border"
-                  >
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>
-                        {typeof member === 'string'
-                          ? 'M'
-                          : member.name
-                              .split(' ')
-                              .map((n) => n[0])
-                              .join('')
-                              .toUpperCase()
-                              .slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <p className="font-medium">
-                        {typeof member === 'string' ? 'Member' : member.name}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {typeof member === 'string' ? '' : member.email}
-                      </p>
-                    </div>
-                    <Badge variant="secondary">Member</Badge>
-                  </div>
-                ))}
-
-                {members.length === 0 && (
-                  <p className="text-muted-foreground text-sm text-center py-4">
-                    No other members. Add members to collaborate!
-                  </p>
-                )}
+          <div className="space-y-4">
+            {/* Add member */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 max-w-sm">
+                <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search users to add..."
+                  className="pl-9 h-9"
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  onFocus={() => allUsers.length === 0 && loadUsers()}
+                />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+
+            {/* Search results */}
+            {memberSearch && filteredUsers.length > 0 && (
+              <div className="border border-border rounded-lg p-2 max-h-40 overflow-y-auto space-y-1">
+                {filteredUsers.slice(0, 5).map((user) => (
+                  <button
+                    key={user._id}
+                    className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-muted transition-colors text-left"
+                    onClick={() => handleAddMember(user._id)}
+                    disabled={addingMember}
+                  >
+                    <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-semibold text-primary">
+                      {user.name?.[0]}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{user.name}</p>
+                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                    </div>
+                    <Badge variant="outline" className="ml-auto text-[10px]">
+                      Add
+                    </Badge>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Members list */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Owner */}
+              <Card className="border-primary/30">
+                <CardContent className="p-4 flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-lg font-semibold text-primary">
+                    {owner?.name?.[0]}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">{owner?.name}</p>
+                    <p className="text-xs text-muted-foreground">{owner?.email}</p>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] mt-1 border-primary/30 text-primary"
+                    >
+                      Owner
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+              {/* Members */}
+              {members.map((member: any) => (
+                <Card key={member._id || member.id} className="border-border/50 group">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-lg font-semibold">
+                      {member.name?.[0]}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{member.name}</p>
+                      <p className="text-xs text-muted-foreground">{member.email}</p>
+                      <Badge variant="secondary" className="text-[10px] mt-1">
+                        Member
+                      </Badge>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                      onClick={() => handleRemoveMember(member._id || member.id)}
+                    >
+                      <UserMinus className="h-3.5 w-3.5" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="overview">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status</span>
-                  <Badge variant={getStatusBadge(project.status)}>
-                    {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-                  </Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Created</span>
-                  <span className="flex items-center gap-1 text-sm">
-                    <Calendar className="h-3.5 w-3.5" />
-                    {new Date(project.createdAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Last Updated</span>
-                  <span className="text-sm">
-                    {new Date(project.updatedAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Members</span>
-                  <span className="text-sm">{members.length + 1} people</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Task Distribution</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-blue-500">To Do</span>
-                    <span>{todoCount}</span>
+        <TabsContent value="activity">
+          <Card className="border-border/50">
+            <CardContent className="p-4 space-y-3">
+              {activities.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No activity yet</p>
+              ) : (
+                activities.map((a) => (
+                  <div key={a._id} className="flex items-start gap-3 text-sm">
+                    <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-semibold text-primary flex-shrink-0 mt-0.5">
+                      {a.user?.name?.[0] || '?'}
+                    </div>
+                    <div>
+                      <p>
+                        <span className="font-medium">{a.user?.name}</span>
+                        <span className="text-muted-foreground"> {a.action} </span>
+                        <span className="font-medium">{a.entityName}</span>
+                      </p>
+                      {a.details && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{a.details}</p>
+                      )}
+                      <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                        {format(new Date(a.createdAt), 'MMM d, h:mm a')}
+                      </p>
+                    </div>
                   </div>
-                  <Progress
-                    value={tasks.length ? (todoCount / tasks.length) * 100 : 0}
-                    className="h-2"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-yellow-500">In Progress</span>
-                    <span>{inProgressCount}</span>
-                  </div>
-                  <Progress
-                    value={tasks.length ? (inProgressCount / tasks.length) * 100 : 0}
-                    className="h-2"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-green-500">Completed</span>
-                    <span>{completedCount}</span>
-                  </div>
-                  <Progress
-                    value={tasks.length ? (completedCount / tasks.length) * 100 : 0}
-                    className="h-2"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
       {/* Dialogs */}
       <CreateTaskDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
+        open={createTaskOpen}
+        onOpenChange={setCreateTaskOpen}
         onSuccess={loadData}
         preselectedProjectId={id}
-      />
-      <EditTaskDialog
-        open={editTaskOpen}
-        onOpenChange={setEditTaskOpen}
-        onSuccess={loadData}
-        task={selectedTask}
       />
       <EditProjectDialog
         open={editProjectOpen}
         onOpenChange={setEditProjectOpen}
-        onSuccess={loadData}
         project={project}
+        onSuccess={loadData}
+      />
+      <TaskDetailDrawer
+        task={detailTask}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        onTaskUpdate={loadData}
       />
     </div>
   );

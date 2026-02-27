@@ -1,264 +1,325 @@
-import { useState } from 'react';
-import { User, Palette, Bell, Save, Lock } from 'lucide-react';
-import { Button } from '../components/ui/button';
+import { useState, useEffect } from 'react';
+import {
+  User as UserIcon,
+  Palette,
+  Shield,
+  Sun,
+  Moon,
+  Monitor,
+  Database,
+  Save,
+  Loader2,
+} from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Separator } from '../components/ui/separator';
-import { toast } from 'sonner';
-import { useAuth } from '../contexts/AuthContext';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useTheme } from '../components/theme-provider';
+import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'sonner';
 import api from '../services/api';
+import seedService from '../services/seed.service';
+import type { ColorPreset } from '../components/theme-provider';
+
+const presets: { name: string; value: ColorPreset; color: string }[] = [
+  { name: 'Violet', value: 'violet', color: '#7c3aed' },
+  { name: 'Blue', value: 'blue', color: '#3b82f6' },
+  { name: 'Green', value: 'green', color: '#10b981' },
+  { name: 'Orange', value: 'orange', color: '#f59e0b' },
+  { name: 'Rose', value: 'rose', color: '#f43f5e' },
+  { name: 'Zinc', value: 'zinc', color: '#71717a' },
+];
 
 export default function Settings() {
-  const { user } = useAuth();
-  const { theme, setTheme } = useTheme();
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [passwordLoading, setPasswordLoading] = useState(false);
+  const { user, checkAuth } = useAuth();
+  const { theme, setTheme, colorPreset, setColorPreset } = useTheme();
+  const [name, setName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
-  const [profileData, setProfileData] = useState({
-    name: user?.name || '',
-    email: user?.email || '',
-  });
-
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-  });
-
-  const handleProfileUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!profileData.name.trim()) {
-      toast.error('Name is required');
-      return;
+  useEffect(() => {
+    if (user) {
+      setName(user.name);
+      setEmail(user.email);
     }
+  }, [user]);
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
     try {
-      setProfileLoading(true);
-      await api.put('/auth/profile', profileData);
+      await api.put('/auth/profile', { name, email });
+      await checkAuth();
       toast.success('Profile updated successfully');
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to update profile');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update profile');
     } finally {
-      setProfileLoading(false);
+      setSaving(false);
     }
   };
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordData.newPassword.length < 6) {
-      toast.error('New password must be at least 6 characters');
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword) {
+      toast.error('Please fill in both password fields');
       return;
     }
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error('New passwords do not match');
-      return;
-    }
+    setSaving(true);
     try {
-      setPasswordLoading(true);
-      await api.put('/auth/password', {
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword,
-      });
+      await api.put('/auth/password', { currentPassword, newPassword });
       toast.success('Password changed successfully');
-      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to change password');
+      setCurrentPassword('');
+      setNewPassword('');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to change password');
     } finally {
-      setPasswordLoading(false);
+      setSaving(false);
+    }
+  };
+
+  const handleSeedData = async () => {
+    setSeeding(true);
+    try {
+      await seedService.seedDemoData();
+      toast.success('Demo data populated! Please log in again.');
+      // Clear auth and redirect since users were cleared
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to seed data');
+    } finally {
+      setSeeding(false);
     }
   };
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Manage your account and preferences</p>
+        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">Manage your account and preferences</p>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="profile" className="gap-2">
-            <User className="h-4 w-4" /> Profile
+        <TabsList className="grid grid-cols-3 w-full max-w-md">
+          <TabsTrigger value="profile" className="gap-1.5 text-xs">
+            <UserIcon className="h-3.5 w-3.5" />
+            Profile
           </TabsTrigger>
-          <TabsTrigger value="appearance" className="gap-2">
-            <Palette className="h-4 w-4" /> Appearance
+          <TabsTrigger value="appearance" className="gap-1.5 text-xs">
+            <Palette className="h-3.5 w-3.5" />
+            Appearance
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-2">
-            <Bell className="h-4 w-4" /> Notifications
+          <TabsTrigger value="account" className="gap-1.5 text-xs">
+            <Shield className="h-3.5 w-3.5" />
+            Account
           </TabsTrigger>
         </TabsList>
 
         {/* Profile Tab */}
-        <TabsContent value="profile" className="space-y-6">
-          <Card>
+        <TabsContent value="profile">
+          <Card className="border-border/50">
             <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
+              <CardTitle className="text-base">Profile Information</CardTitle>
               <CardDescription>Update your name and email address</CardDescription>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleProfileUpdate} className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    value={profileData.name}
-                    onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
-                    placeholder="Your name"
-                  />
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-xl font-bold text-primary">
+                  {user?.name
+                    ?.split(' ')
+                    .map((n) => n[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2)}
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={profileData.email}
-                    onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                    placeholder="your.email@example.com"
-                  />
+                <div>
+                  <p className="font-semibold">{user?.name}</p>
+                  <p className="text-sm text-muted-foreground">{user?.email}</p>
                 </div>
-                <Button type="submit" disabled={profileLoading} className="gap-2">
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="name">Name</Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="max-w-md"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="max-w-md"
+                />
+              </div>
+              <Button onClick={handleSaveProfile} disabled={saving} className="gap-1.5">
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
                   <Save className="h-4 w-4" />
-                  {profileLoading ? 'Saving...' : 'Save Changes'}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="h-5 w-5" /> Change Password
-              </CardTitle>
-              <CardDescription>Update your password to keep your account secure</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handlePasswordChange} className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="currentPassword">Current Password</Label>
-                  <Input
-                    id="currentPassword"
-                    type="password"
-                    value={passwordData.currentPassword}
-                    onChange={(e) =>
-                      setPasswordData({ ...passwordData, currentPassword: e.target.value })
-                    }
-                  />
-                </div>
-                <Separator />
-                <div className="grid gap-2">
-                  <Label htmlFor="newPassword">New Password</Label>
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    value={passwordData.newPassword}
-                    onChange={(e) =>
-                      setPasswordData({ ...passwordData, newPassword: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={passwordData.confirmPassword}
-                    onChange={(e) =>
-                      setPasswordData({ ...passwordData, confirmPassword: e.target.value })
-                    }
-                  />
-                </div>
-                <Button type="submit" disabled={passwordLoading} className="gap-2">
-                  <Lock className="h-4 w-4" />
-                  {passwordLoading ? 'Changing...' : 'Change Password'}
-                </Button>
-              </form>
+                )}
+                Save Changes
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* Appearance Tab */}
         <TabsContent value="appearance">
-          <Card>
+          <Card className="border-border/50">
             <CardHeader>
-              <CardTitle>Theme</CardTitle>
-              <CardDescription>Choose your preferred appearance</CardDescription>
+              <CardTitle className="text-base">Appearance</CardTitle>
+              <CardDescription>Customize the look and feel of the application</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-4">
-                {(
-                  [
-                    { value: 'light', label: 'Light', preview: 'bg-white border-border' },
-                    { value: 'dark', label: 'Dark', preview: 'bg-zinc-900 border-zinc-700' },
-                    {
-                      value: 'system',
-                      label: 'System',
-                      preview: 'bg-gradient-to-r from-white to-zinc-900 border-border',
-                    },
-                  ] as const
-                ).map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => setTheme(option.value)}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
-                      theme === option.value
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/50'
-                    }`}
-                  >
-                    <div className={`h-16 w-full rounded-md border ${option.preview}`} />
-                    <span className="text-sm font-medium">{option.label}</span>
-                  </button>
-                ))}
+            <CardContent className="space-y-6">
+              {/* Theme Mode */}
+              <div>
+                <Label className="text-sm font-medium mb-3 block">Theme Mode</Label>
+                <div className="grid grid-cols-3 gap-3 max-w-md">
+                  {[
+                    { value: 'light', label: 'Light', icon: Sun },
+                    { value: 'dark', label: 'Dark', icon: Moon },
+                    { value: 'system', label: 'System', icon: Monitor },
+                  ].map((option) => {
+                    const Icon = option.icon;
+                    return (
+                      <button
+                        key={option.value}
+                        onClick={() => setTheme(option.value as any)}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
+                          theme === option.value
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:border-border/80 hover:bg-muted/50'
+                        }`}
+                      >
+                        <Icon
+                          className={`h-5 w-5 ${theme === option.value ? 'text-primary' : 'text-muted-foreground'}`}
+                        />
+                        <span
+                          className={`text-sm font-medium ${theme === option.value ? 'text-primary' : ''}`}
+                        >
+                          {option.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Color Preset */}
+              <div>
+                <Label className="text-sm font-medium mb-3 block">Accent Color</Label>
+                <div className="grid grid-cols-6 gap-3 max-w-md">
+                  {presets.map((preset) => (
+                    <button
+                      key={preset.value}
+                      onClick={() => setColorPreset(preset.value)}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all ${
+                        colorPreset === preset.value
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-border/80'
+                      }`}
+                    >
+                      <div
+                        className="h-8 w-8 rounded-full transition-transform hover:scale-110"
+                        style={{ backgroundColor: preset.color }}
+                      />
+                      <span className="text-[11px] font-medium">{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Notifications Tab */}
-        <TabsContent value="notifications">
-          <Card>
+        {/* Account Tab */}
+        <TabsContent value="account" className="space-y-6">
+          <Card className="border-border/50">
             <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>Choose what you want to be notified about</CardDescription>
+              <CardTitle className="text-base">Change Password</CardTitle>
+              <CardDescription>Update your password to keep your account secure</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {[
-                {
-                  id: 'task-assigned',
-                  label: 'Task assigned to me',
-                  description: 'Get notified when a task is assigned to you',
-                },
-                {
-                  id: 'task-completed',
-                  label: 'Task completed',
-                  description: 'Get notified when a task you created is completed',
-                },
-                {
-                  id: 'project-updates',
-                  label: 'Project updates',
-                  description: 'Get notified about project status changes',
-                },
-                {
-                  id: 'comments',
-                  label: 'Comments',
-                  description: 'Get notified when someone comments on your task',
-                },
-              ].map((pref) => (
-                <div
-                  key={pref.id}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border"
-                >
-                  <div>
-                    <p className="font-medium text-sm">{pref.label}</p>
-                    <p className="text-xs text-muted-foreground">{pref.description}</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-border" />
-                </div>
-              ))}
-              <p className="text-xs text-muted-foreground">
-                Note: Notification delivery will be available in a future update.
+              <div className="space-y-2">
+                <Label htmlFor="current-password">Current Password</Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="max-w-md"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="max-w-md"
+                />
+              </div>
+              <Button
+                onClick={handleChangePassword}
+                disabled={saving}
+                variant="outline"
+                className="gap-1.5"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Shield className="h-4 w-4" />
+                )}
+                Change Password
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-destructive/30">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Demo Data
+              </CardTitle>
+              <CardDescription>
+                Populate the database with sample data for demonstration. This will{' '}
+                <strong>clear all existing data</strong> and create fresh demo projects, tasks, and
+                users.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                variant="destructive"
+                onClick={handleSeedData}
+                disabled={seeding}
+                className="gap-1.5"
+              >
+                {seeding ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Populating...
+                  </>
+                ) : (
+                  <>
+                    <Database className="h-4 w-4" />
+                    Populate Demo Data
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground mt-2">
+                After seeding, log in with: <strong>jayendra@example.com</strong> /{' '}
+                <strong>password123</strong>
               </p>
             </CardContent>
           </Card>

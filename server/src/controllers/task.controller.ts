@@ -2,26 +2,38 @@ import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import Task from '../models/Task';
 import Project from '../models/Project';
+import ActivityLog from '../models/ActivityLog';
 import { AuthRequest } from '../types';
 
 // Validation schemas
 const createTaskSchema = z.object({
   title: z.string().min(1, 'Task title is required').max(200, 'Title too long'),
   description: z.string().max(2000, 'Description too long').optional(),
-  status: z.enum(['todo', 'in-progress', 'completed']).optional(),
-  priority: z.enum(['low', 'medium', 'high']).optional(),
+  status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional(),
+  priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']).optional(),
   project: z.string().optional(),
   assignedTo: z.string().optional(),
   dueDate: z.string().optional(),
+  labels: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  subtasks: z
+    .array(z.object({ title: z.string().min(1), completed: z.boolean().optional() }))
+    .optional(),
 });
 
 const updateTaskSchema = z.object({
   title: z.string().min(1, 'Task title is required').max(200, 'Title too long').optional(),
   description: z.string().max(2000, 'Description too long').optional(),
-  status: z.enum(['todo', 'in-progress', 'completed']).optional(),
-  priority: z.enum(['low', 'medium', 'high']).optional(),
-  assignedTo: z.string().optional(),
-  dueDate: z.string().optional(),
+  status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional(),
+  priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']).optional(),
+  assignedTo: z.string().nullable().optional(),
+  dueDate: z.string().nullable().optional(),
+  labels: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  subtasks: z
+    .array(z.object({ title: z.string().min(1), completed: z.boolean().optional() }))
+    .optional(),
+  order: z.number().optional(),
 });
 
 // Get all tasks with filters
@@ -36,7 +48,7 @@ export const getTasks = async (
       return;
     }
 
-    const { project, status, priority, assignedTo } = req.query;
+    const { project, status, priority, assignedTo, labels } = req.query;
 
     // Get user's projects
     const userProjects = await Project.find({
@@ -45,19 +57,29 @@ export const getTasks = async (
 
     const projectIds = userProjects.map((p) => p._id);
 
-    // Build filter - include tasks in user's projects OR tasks with no project
+    // Build filter - include tasks in user's projects OR tasks created by user
     const filter: any = {
-      $or: [{ project: { $in: projectIds } }, { project: { $exists: false } }, { project: null }],
+      $or: [
+        { project: { $in: projectIds } },
+        { createdBy: req.user.id },
+        { assignedTo: req.user.id },
+        { project: { $exists: false } },
+        { project: null },
+      ],
     };
 
     if (project) filter.project = project;
     if (status) filter.status = status;
     if (priority) filter.priority = priority;
     if (assignedTo) filter.assignedTo = assignedTo;
+    if (labels && typeof labels === 'string') {
+      filter.labels = { $in: labels.split(',') };
+    }
 
     const tasks = await Task.find(filter)
-      .populate('project', 'name status')
-      .populate('assignedTo', 'name email')
+      .populate('project', 'name status color icon')
+      .populate('assignedTo', 'name email avatar')
+      .populate('createdBy', 'name email avatar')
       .sort({ createdAt: -1 });
 
     res.json({
@@ -82,8 +104,9 @@ export const getTaskById = async (
     }
 
     const task = await Task.findById(req.params.id)
-      .populate('project', 'name status owner members')
-      .populate('assignedTo', 'name email');
+      .populate('project', 'name status owner members color icon')
+      .populate('assignedTo', 'name email avatar')
+      .populate('createdBy', 'name email avatar');
 
     if (!task) {
       res.status(404).json({ success: false, message: 'Task not found' });
@@ -105,7 +128,6 @@ export const getTaskById = async (
         return;
       }
     }
-    // If task has no project, anyone can view it (you may want to add owner checks here)
 
     res.json({
       success: true,
@@ -147,7 +169,7 @@ export const createTask = async (
     }
 
     // Clean the data - remove project field if it's empty string
-    const taskData: any = { ...validatedData };
+    const taskData: any = { ...validatedData, createdBy: req.user.id };
     if (!taskData.project || taskData.project === '') {
       delete taskData.project;
     }
@@ -156,8 +178,19 @@ export const createTask = async (
     const task = await Task.create(taskData);
 
     const populatedTask = await Task.findById(task._id)
-      .populate('project', 'name status')
-      .populate('assignedTo', 'name email');
+      .populate('project', 'name status color icon')
+      .populate('assignedTo', 'name email avatar')
+      .populate('createdBy', 'name email avatar');
+
+    // Log activity
+    await ActivityLog.create({
+      user: req.user.id,
+      action: 'created',
+      entityType: 'task',
+      entityId: task._id.toString(),
+      entityName: task.title,
+      projectId: task.project || undefined,
+    });
 
     res.status(201).json({
       success: true,
@@ -214,15 +247,35 @@ export const updateTask = async (
         return;
       }
     }
-    // If task has no project, anyone can update it (you may want to add owner checks here)
+
+    // Build update details for activity log
+    const changes: string[] = [];
+    if (validatedData.status && validatedData.status !== task.status) {
+      changes.push(`status → ${validatedData.status}`);
+    }
+    if (validatedData.priority && validatedData.priority !== task.priority) {
+      changes.push(`priority → ${validatedData.priority}`);
+    }
 
     // Update task
     const updatedTask = await Task.findByIdAndUpdate(req.params.id, validatedData, {
       new: true,
       runValidators: true,
     })
-      .populate('project', 'name status')
-      .populate('assignedTo', 'name email');
+      .populate('project', 'name status color icon')
+      .populate('assignedTo', 'name email avatar')
+      .populate('createdBy', 'name email avatar');
+
+    // Log activity
+    await ActivityLog.create({
+      user: req.user.id,
+      action: 'updated',
+      entityType: 'task',
+      entityId: task._id.toString(),
+      entityName: task.title,
+      projectId: task.project || undefined,
+      details: changes.length > 0 ? changes.join(', ') : undefined,
+    });
 
     res.json({
       success: true,
@@ -238,6 +291,49 @@ export const updateTask = async (
       });
       return;
     }
+    next(error);
+  }
+};
+
+// Toggle subtask completion
+export const toggleSubtask = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Not authenticated' });
+      return;
+    }
+
+    const { id, subtaskId } = req.params;
+    const task = await Task.findById(id);
+
+    if (!task) {
+      res.status(404).json({ success: false, message: 'Task not found' });
+      return;
+    }
+
+    const subtask = task.subtasks.id(subtaskId);
+    if (!subtask) {
+      res.status(404).json({ success: false, message: 'Subtask not found' });
+      return;
+    }
+
+    subtask.completed = !subtask.completed;
+    await task.save();
+
+    const populatedTask = await Task.findById(id)
+      .populate('project', 'name status color icon')
+      .populate('assignedTo', 'name email avatar')
+      .populate('createdBy', 'name email avatar');
+
+    res.json({
+      success: true,
+      data: { task: populatedTask },
+    });
+  } catch (error) {
     next(error);
   }
 };
@@ -262,24 +358,33 @@ export const deleteTask = async (
       return;
     }
 
-    // Check if user is project owner (only if task has a project)
+    // Check if user has access (project owner, member, or task creator)
     if (task.project) {
       const project = await Project.findOne({
         _id: task.project,
-        owner: req.user.id,
+        $or: [{ owner: req.user.id }, { members: req.user.id }],
       });
 
-      if (!project) {
+      if (!project && task.createdBy?.toString() !== req.user.id) {
         res.status(403).json({
           success: false,
-          message: 'Only project owners can delete tasks',
+          message: 'You do not have permission to delete this task',
         });
         return;
       }
     }
-    // If task has no project, anyone can delete it (you may want to add owner checks here)
 
     await Task.findByIdAndDelete(req.params.id);
+
+    // Log activity
+    await ActivityLog.create({
+      user: req.user.id,
+      action: 'deleted',
+      entityType: 'task',
+      entityId: req.params.id,
+      entityName: task.title,
+      projectId: task.project || undefined,
+    });
 
     res.json({
       success: true,

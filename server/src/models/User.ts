@@ -24,6 +24,15 @@ const userSchema = new Schema<IUser>(
       minlength: [6, 'Password must be at least 6 characters'],
       select: false, // Don't include password in queries by default
     },
+    avatar: {
+      type: String,
+      default: '',
+    },
+    role: {
+      type: String,
+      enum: ['admin', 'member'],
+      default: 'member',
+    },
   },
   {
     timestamps: true,

@@ -1,155 +1,107 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
-  Search,
-  MoreHorizontal,
-  Trash2,
-  Edit,
-  Archive,
   FolderKanban,
   LayoutGrid,
   List,
-  ArrowRight,
-  Users,
+  Search,
+  MoreHorizontal,
+  Edit,
+  Trash2,
 } from 'lucide-react';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Progress } from '../components/ui/progress';
 import { Skeleton } from '../components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { toast } from 'sonner';
 import CreateProjectDialog from '../components/CreateProjectDialog';
 import EditProjectDialog from '../components/EditProjectDialog';
 import projectService from '../services/project.service';
-import taskService from '../services/task.service';
-import type { Project, Task } from '../types';
+import type { Project, User } from '../types';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 export default function Projects() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'archived'>('all');
+  const [view, setView] = useState<'grid' | 'list'>('grid');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editProject, setEditProject] = useState<Project | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
-  const loadData = useCallback(async () => {
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const loadProjects = async () => {
     try {
-      setLoading(true);
-      const [projectsData, tasksData] = await Promise.all([
-        projectService.getProjects(filter === 'all' ? undefined : filter),
-        taskService.getTasks({}),
-      ]);
-      setProjects(projectsData);
-      setTasks(tasksData);
+      const data = await projectService.getProjects();
+      setProjects(data);
     } catch {
-      toast.error('Failed to load projects');
+      // silent
     } finally {
       setLoading(false);
     }
-  }, [filter]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleEdit = (project: Project) => {
-    setSelectedProject(project);
-    setEditDialogOpen(true);
   };
 
-  const handleArchive = async (project: Project) => {
+  const handleDeleteProject = async (projectId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!confirm('Delete this project and all its tasks? This cannot be undone.')) return;
     try {
-      await projectService.updateProject(project._id, { status: 'archived' });
-      toast.success('Project archived');
-      loadData();
-    } catch {
-      toast.error('Failed to archive project');
-    }
-  };
-
-  const handleDelete = async (project: Project) => {
-    if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
-    try {
-      await projectService.deleteProject(project._id);
+      await projectService.deleteProject(projectId);
       toast.success('Project deleted');
-      loadData();
+      loadProjects();
     } catch {
       toast.error('Failed to delete project');
     }
   };
 
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'text-emerald-600 bg-emerald-500/10';
-      case 'completed':
-        return 'text-blue-600 bg-blue-500/10';
-      case 'archived':
-        return 'text-muted-foreground bg-muted';
-      default:
-        return 'text-muted-foreground bg-muted';
-    }
+  const handleEditClick = (project: Project, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditProject(project);
+    setEditOpen(true);
   };
 
-  const projectColors = [
-    'bg-violet-500',
-    'bg-blue-500',
-    'bg-emerald-500',
-    'bg-amber-500',
-    'bg-rose-500',
-    'bg-cyan-500',
-    'bg-pink-500',
-    'bg-indigo-500',
-  ];
-  const getProjectColor = (name: string) =>
-    projectColors[name.charCodeAt(0) % projectColors.length];
+  const filteredProjects = projects.filter((p) => {
+    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
+    if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    return true;
+  });
 
-  const getProjectTasks = (projectId: string) =>
-    tasks.filter(
-      (t) => (typeof t.project === 'string' ? t.project : (t.project as any)?._id) === projectId
-    );
-
-  const getMemberInitials = (member: any) => {
-    if (typeof member === 'string') return 'U';
-    return (
-      member.name
-        ?.split(' ')
-        .map((n: string) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2) || 'U'
-    );
+  const getStatusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      active: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+      completed: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/20',
+      archived: 'bg-muted text-muted-foreground border-border',
+    };
+    return map[status] || '';
   };
-
-  const filteredProjects = projects.filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-36" />
-          <Skeleton className="h-9 w-32" />
-        </div>
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-10 w-48" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 rounded-xl" />
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-44 rounded-xl" />
           ))}
         </div>
       </div>
@@ -157,174 +109,178 @@ export default function Projects() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Projects</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {projects.length} project{projects.length !== 1 ? 's' : ''}
-            {' · '}
-            {projects.filter((p) => p.status === 'active').length} active
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <FolderKanban className="h-6 w-6 text-primary" />
+            Projects
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">{projects.length} projects total</p>
         </div>
-        <Button className="gap-2" onClick={() => setCreateDialogOpen(true)}>
+        <Button className="gap-1.5" onClick={() => setCreateOpen(true)}>
           <Plus className="h-4 w-4" />
           New Project
         </Button>
       </div>
 
-      {/* Filters & Search */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-        <div className="flex gap-1 p-1 bg-muted/50 rounded-lg">
-          {(['all', 'active', 'completed', 'archived'] as const).map((f) => (
-            <Button
-              key={f}
-              variant={filter === f ? 'default' : 'ghost'}
-              size="sm"
-              className="h-8 text-xs capitalize"
-              onClick={() => setFilter(f)}
-            >
-              {f === 'all' ? 'All' : f}
-            </Button>
-          ))}
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search projects..."
+            className="pl-9 h-9"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
-        <div className="flex items-center gap-2 flex-1">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search projects..."
-              className="pl-9 h-8 text-sm bg-muted/50 border-transparent focus:bg-background focus:border-border"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-0.5 border border-border rounded-lg p-0.5">
-            <Button
-              variant={viewMode === 'grid' ? 'default' : 'ghost'}
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setViewMode('grid')}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'ghost'}
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setViewMode('list')}
-            >
-              <List className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[140px] h-9">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="archived">Archived</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex border border-border rounded-lg overflow-hidden">
+          <Button
+            variant={view === 'grid' ? 'secondary' : 'ghost'}
+            size="icon"
+            className="h-9 w-9 rounded-none"
+            onClick={() => setView('grid')}
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={view === 'list' ? 'secondary' : 'ghost'}
+            size="icon"
+            className="h-9 w-9 rounded-none"
+            onClick={() => setView('list')}
+          >
+            <List className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Projects */}
+      {/* Projects Grid/List */}
       {filteredProjects.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center">
-            <FolderKanban className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-muted-foreground font-medium">
-              {searchQuery ? 'No matching projects' : 'No projects yet'}
-            </p>
-            <p className="text-sm text-muted-foreground/70 mt-1">
-              {searchQuery
-                ? 'Try a different search term'
-                : 'Create your first project to get started'}
-            </p>
-            {!searchQuery && (
-              <Button className="mt-4 gap-2" size="sm" onClick={() => setCreateDialogOpen(true)}>
-                <Plus className="h-3.5 w-3.5" /> Create Project
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="text-center py-16">
+          <FolderKanban className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+          <h3 className="text-lg font-medium">No projects found</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            {searchQuery
+              ? 'Try a different search term'
+              : 'Create your first project to get started'}
+          </p>
+          {!searchQuery && (
+            <Button className="mt-4 gap-1.5" onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" /> Create Project
+            </Button>
+          )}
+        </div>
+      ) : view === 'grid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in-list">
           {filteredProjects.map((project) => {
-            const pTasks = getProjectTasks(project._id);
-            const done = pTasks.filter((t) => t.status === 'completed').length;
-            const progress = pTasks.length > 0 ? Math.round((done / pTasks.length) * 100) : 0;
+            const progress =
+              project.taskCount && project.taskCount > 0
+                ? Math.round(((project.completedTaskCount || 0) / project.taskCount) * 100)
+                : 0;
+            const memberCount = Array.isArray(project.members) ? project.members.length : 0;
 
             return (
               <Card
                 key={project._id}
-                className="group hover:shadow-md hover:border-border/80 transition-all duration-200 cursor-pointer overflow-hidden"
+                className="card-hover border-border/50 cursor-pointer group overflow-hidden"
                 onClick={() => navigate(`/projects/${project._id}`)}
               >
-                {/* Color Strip */}
-                <div className={`h-1 ${getProjectColor(project.name)}`} />
-
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-sm truncate">{project.name}</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                        {project.description || 'No description'}
-                      </p>
+                <div className="h-1.5" style={{ backgroundColor: project.color || '#7c3aed' }} />
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-10 w-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0"
+                        style={{ backgroundColor: (project.color || '#7c3aed') + '20' }}
+                      >
+                        {project.icon || '📁'}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-sm group-hover:text-primary transition-colors truncate">
+                          {project.name}
+                        </h3>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] capitalize mt-1 ${getStatusBadge(project.status)}`}
+                        >
+                          {project.status}
+                        </Badge>
+                      </div>
                     </div>
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                          onClick={(e) => e.stopPropagation()}
                         >
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenuItem onClick={() => handleEdit(project)}>
-                          <Edit className="h-3.5 w-3.5 mr-2" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleArchive(project)}>
-                          <Archive className="h-3.5 w-3.5 mr-2" /> Archive
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e: any) => handleEditClick(project, e)}
+                          className="gap-2"
+                        >
+                          <Edit className="h-3.5 w-3.5" /> Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDelete(project)}
+                          onClick={(e: any) => handleDeleteProject(project._id, e)}
+                          className="gap-2 text-destructive"
                         >
-                          <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
+                          <Trash2 className="h-3.5 w-3.5" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
 
-                  {/* Progress */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <Progress value={progress} className="h-1.5 flex-1" />
-                    <span className="text-[11px] text-muted-foreground font-medium">
-                      {progress}%
-                    </span>
+                  <p className="text-xs text-muted-foreground mt-3 line-clamp-2 min-h-[32px]">
+                    {project.description || 'No description'}
+                  </p>
+
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>
+                        {project.completedTaskCount || 0}/{project.taskCount || 0} tasks
+                      </span>
+                      <span>{progress}%</span>
+                    </div>
+                    <Progress value={progress} className="h-1.5" />
                   </div>
 
-                  {/* Footer */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Badge
-                        className={`text-[10px] px-1.5 py-0 h-5 ${getStatusStyle(project.status)}`}
-                        variant="secondary"
-                      >
-                        {project.status}
-                      </Badge>
-                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <Users className="h-3 w-3" />
-                        {(Array.isArray(project.members) ? project.members.length : 0) + 1}
-                      </div>
-                    </div>
+                  <div className="mt-3 flex items-center justify-between">
                     <div className="flex -space-x-1.5">
-                      {Array.isArray(project.members) &&
-                        project.members.slice(0, 3).map((member, i) => (
-                          <Avatar key={i} className="h-5 w-5 border border-background">
-                            <AvatarFallback className="text-[8px]">
-                              {getMemberInitials(member)}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
+                      {(project.members as User[]).slice(0, 3).map((member, i) => (
+                        <div
+                          key={i}
+                          className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[9px] font-semibold ring-2 ring-card"
+                          title={typeof member === 'object' ? member.name : ''}
+                        >
+                          {typeof member === 'object' ? member.name?.[0] : '?'}
+                        </div>
+                      ))}
+                      {memberCount > 3 && (
+                        <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[9px] font-semibold ring-2 ring-card">
+                          +{memberCount - 3}
+                        </div>
+                      )}
                     </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      {format(new Date(project.createdAt), 'MMM d')}
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -332,45 +288,73 @@ export default function Projects() {
           })}
         </div>
       ) : (
-        /* List View */
-        <div className="space-y-1.5">
+        <div className="space-y-2 animate-in-list">
           {filteredProjects.map((project) => {
-            const pTasks = getProjectTasks(project._id);
-            const done = pTasks.filter((t) => t.status === 'completed').length;
-            const progress = pTasks.length > 0 ? Math.round((done / pTasks.length) * 100) : 0;
-
+            const progress =
+              project.taskCount && project.taskCount > 0
+                ? Math.round(((project.completedTaskCount || 0) / project.taskCount) * 100)
+                : 0;
             return (
               <div
                 key={project._id}
-                className="flex items-center gap-4 p-3 rounded-xl border border-border bg-card hover:bg-accent/30 transition-all group cursor-pointer"
+                className="flex items-center gap-4 p-4 rounded-lg border border-border/50 hover:bg-muted/30 cursor-pointer transition-colors group"
                 onClick={() => navigate(`/projects/${project._id}`)}
               >
                 <div
-                  className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${getProjectColor(project.name)}`}
+                  className="h-10 w-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0"
+                  style={{ backgroundColor: (project.color || '#7c3aed') + '20' }}
                 >
-                  <FolderKanban className="h-4 w-4 text-white" />
+                  {project.icon || '📁'}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-medium truncate">{project.name}</h3>
-                  <p className="text-[11px] text-muted-foreground truncate">
-                    {project.description || 'No description'}
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-medium text-sm group-hover:text-primary transition-colors truncate">
+                      {project.name}
+                    </h3>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] capitalize ${getStatusBadge(project.status)}`}
+                    >
+                      {project.status}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    {project.description}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Badge
-                    className={`text-[10px] px-1.5 py-0 h-5 ${getStatusStyle(project.status)}`}
-                    variant="secondary"
-                  >
-                    {project.status}
-                  </Badge>
-                  <div className="flex items-center gap-1.5 w-24">
-                    <Progress value={progress} className="h-1.5 flex-1" />
-                    <span className="text-[11px] text-muted-foreground w-8">{progress}%</span>
+                <div className="flex items-center gap-4 flex-shrink-0">
+                  <div className="text-right">
+                    <p className="text-xs font-medium">{progress}%</p>
+                    <Progress value={progress} className="h-1 w-20 mt-1" />
                   </div>
-                  <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                    {pTasks.length} tasks
+                  <span className="text-xs text-muted-foreground">
+                    {project.taskCount || 0} tasks
                   </span>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all" />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={(e: any) => handleEditClick(project, e)}
+                        className="gap-2"
+                      >
+                        <Edit className="h-3.5 w-3.5" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(e: any) => handleDeleteProject(project._id, e)}
+                        className="gap-2 text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             );
@@ -378,17 +362,16 @@ export default function Projects() {
         </div>
       )}
 
-      {/* Dialogs */}
       <CreateProjectDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        onSuccess={loadData}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onSuccess={loadProjects}
       />
       <EditProjectDialog
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        onSuccess={loadData}
-        project={selectedProject}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        project={editProject}
+        onSuccess={loadProjects}
       />
     </div>
   );

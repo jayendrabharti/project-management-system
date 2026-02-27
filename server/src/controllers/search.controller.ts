@@ -3,7 +3,7 @@ import Task from '../models/Task';
 import Project from '../models/Project';
 import { AuthRequest } from '../types';
 
-// Search across projects and tasks
+// Search across projects and tasks (user-scoped)
 export const search = async (
   req: AuthRequest,
   res: Response,
@@ -23,18 +23,37 @@ export const search = async (
 
     const searchRegex = { $regex: q, $options: 'i' };
 
+    // Get user's projects for scoping
+    const userProjects = await Project.find({
+      $or: [{ owner: req.user.id }, { members: req.user.id }],
+    }).select('_id');
+    const projectIds = userProjects.map((p) => p._id);
+
     const [projects, tasks] = await Promise.all([
       Project.find({
-        $or: [{ name: searchRegex }, { description: searchRegex }],
+        $and: [
+          { $or: [{ owner: req.user.id }, { members: req.user.id }] },
+          { $or: [{ name: searchRegex }, { description: searchRegex }] },
+        ],
       })
-        .select('name description status')
+        .select('name description status color icon')
         .limit(5)
         .lean(),
       Task.find({
-        $or: [{ title: searchRegex }, { description: searchRegex }],
+        $and: [
+          {
+            $or: [
+              { project: { $in: projectIds } },
+              { createdBy: req.user.id },
+              { assignedTo: req.user.id },
+            ],
+          },
+          { $or: [{ title: searchRegex }, { description: searchRegex }] },
+        ],
       })
-        .select('title description status priority project')
-        .limit(5)
+        .select('title description status priority project labels')
+        .populate('project', 'name color')
+        .limit(10)
         .lean(),
     ]);
 

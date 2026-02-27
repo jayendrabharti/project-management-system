@@ -16,6 +16,19 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (err, _req, res) => {
+            if ('code' in err && err.code === 'ECONNREFUSED') {
+              // Server not ready yet — silently retry on next request
+              if (res && 'writeHead' in res && !res.headersSent) {
+                (res as any).writeHead(502, { 'Content-Type': 'application/json' });
+                (res as any).end(JSON.stringify({ message: 'Server starting up...' }));
+              }
+              return;
+            }
+            console.error('[proxy error]', err.message);
+          });
+        },
       },
     },
   },

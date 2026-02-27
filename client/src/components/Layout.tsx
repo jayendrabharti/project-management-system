@@ -14,18 +14,22 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
-      <main
-        className={cn(
-          'mt-16 p-6 transition-all duration-300 ease-in-out min-h-[calc(100vh-4rem)]',
-          sidebarCollapsed ? 'ml-[60px]' : 'ml-[240px]'
-        )}
-      >
-        {children}
-      </main>
+      <div className="flex">
+        <div className="fixed top-14 left-0 z-40">
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
+        </div>
+        <main
+          className={cn(
+            'flex-1 transition-all duration-200 min-h-[calc(100vh-56px)]',
+            sidebarCollapsed ? 'ml-[60px]' : 'ml-[240px]'
+          )}
+        >
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

@@ -1,23 +1,21 @@
 import { Router } from 'express';
-import type { Router as RouterType } from 'express';
 import {
   getTasks,
   getTaskById,
   createTask,
   updateTask,
   deleteTask,
+  toggleSubtask,
 } from '../controllers/task.controller';
 import { authenticate } from '../middleware/auth';
 
-const router: RouterType = Router();
+const router = Router();
 
-// All routes are protected
-router.use(authenticate);
-
-router.get('/', getTasks);
-router.get('/:id', getTaskById);
-router.post('/', createTask);
-router.put('/:id', updateTask);
-router.delete('/:id', deleteTask);
+router.get('/', authenticate, getTasks);
+router.get('/:id', authenticate, getTaskById);
+router.post('/', authenticate, createTask);
+router.put('/:id', authenticate, updateTask);
+router.patch('/:id/subtasks/:subtaskId/toggle', authenticate, toggleSubtask);
+router.delete('/:id', authenticate, deleteTask);
 
 export default router;

@@ -1,6 +1,9 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import Project from '../models/Project';
+import Task from '../models/Task';
+import Comment from '../models/Comment';
+import ActivityLog from '../models/ActivityLog';
 import { AuthRequest } from '../types';
 
 // Validation schemas
@@ -9,6 +12,8 @@ const createProjectSchema = z.object({
   description: z.string().max(1000, 'Description too long').optional(),
   status: z.enum(['active', 'completed', 'archived']).optional(),
   members: z.array(z.string()).optional(),
+  color: z.string().optional(),
+  icon: z.string().optional(),
 });
 
 const updateProjectSchema = z.object({
@@ -16,6 +21,8 @@ const updateProjectSchema = z.object({
   description: z.string().max(1000, 'Description too long').optional(),
   status: z.enum(['active', 'completed', 'archived']).optional(),
   members: z.array(z.string()).optional(),
+  color: z.string().optional(),
+  icon: z.string().optional(),
 });
 
 // Get all projects (user is member or owner)
@@ -40,13 +47,29 @@ export const getProjects = async (
     }
 
     const projects = await Project.find(filter)
-      .populate('owner', 'name email')
-      .populate('members', 'name email')
+      .populate('owner', 'name email avatar')
+      .populate('members', 'name email avatar')
       .sort({ createdAt: -1 });
+
+    // Attach task counts for each project
+    const projectsWithCounts = await Promise.all(
+      projects.map(async (project) => {
+        const [totalTasks, completedTasks] = await Promise.all([
+          Task.countDocuments({ project: project._id }),
+          Task.countDocuments({ project: project._id, status: 'completed' }),
+        ]);
+
+        return {
+          ...project.toObject(),
+          taskCount: totalTasks,
+          completedTaskCount: completedTasks,
+        };
+      })
+    );
 
     res.json({
       success: true,
-      data: { projects, count: projects.length },
+      data: { projects: projectsWithCounts, count: projectsWithCounts.length },
     });
   } catch (error) {
     next(error);
@@ -69,17 +92,29 @@ export const getProjectById = async (
       _id: req.params.id,
       $or: [{ owner: req.user.id }, { members: req.user.id }],
     })
-      .populate('owner', 'name email')
-      .populate('members', 'name email');
+      .populate('owner', 'name email avatar')
+      .populate('members', 'name email avatar');
 
     if (!project) {
       res.status(404).json({ success: false, message: 'Project not found' });
       return;
     }
 
+    // Get task stats
+    const [totalTasks, completedTasks] = await Promise.all([
+      Task.countDocuments({ project: project._id }),
+      Task.countDocuments({ project: project._id, status: 'completed' }),
+    ]);
+
     res.json({
       success: true,
-      data: { project },
+      data: {
+        project: {
+          ...project.toObject(),
+          taskCount: totalTasks,
+          completedTaskCount: completedTasks,
+        },
+      },
     });
   } catch (error) {
     next(error);
@@ -108,8 +143,18 @@ export const createProject = async (
     });
 
     const populatedProject = await Project.findById(project._id)
-      .populate('owner', 'name email')
-      .populate('members', 'name email');
+      .populate('owner', 'name email avatar')
+      .populate('members', 'name email avatar');
+
+    // Log activity
+    await ActivityLog.create({
+      user: req.user.id,
+      action: 'created',
+      entityType: 'project',
+      entityId: project._id.toString(),
+      entityName: project.name,
+      projectId: project._id,
+    });
 
     res.status(201).json({
       success: true,
@@ -146,7 +191,7 @@ export const updateProject = async (
     // Find project and check ownership
     const project = await Project.findOne({
       _id: req.params.id,
-      owner: req.user.id,
+      $or: [{ owner: req.user.id }, { members: req.user.id }],
     });
 
     if (!project) {
@@ -162,8 +207,18 @@ export const updateProject = async (
       new: true,
       runValidators: true,
     })
-      .populate('owner', 'name email')
-      .populate('members', 'name email');
+      .populate('owner', 'name email avatar')
+      .populate('members', 'name email avatar');
+
+    // Log activity
+    await ActivityLog.create({
+      user: req.user.id,
+      action: 'updated',
+      entityType: 'project',
+      entityId: project._id.toString(),
+      entityName: project.name,
+      projectId: project._id,
+    });
 
     res.json({
       success: true,
@@ -183,7 +238,7 @@ export const updateProject = async (
   }
 };
 
-// Delete project
+// Delete project - CASCADE delete tasks and comments
 export const deleteProject = async (
   req: AuthRequest,
   res: Response,
@@ -209,11 +264,34 @@ export const deleteProject = async (
       return;
     }
 
+    // Cascade delete: get task IDs first for comment deletion
+    const tasks = await Task.find({ project: req.params.id }).select('_id');
+    const taskIds = tasks.map((t) => t._id);
+
+    // Delete comments on those tasks
+    await Comment.deleteMany({ task: { $in: taskIds } });
+
+    // Delete all tasks in the project
+    await Task.deleteMany({ project: req.params.id });
+
+    // Delete activity logs for this project
+    await ActivityLog.deleteMany({ projectId: req.params.id });
+
+    // Delete the project
     await Project.findByIdAndDelete(req.params.id);
+
+    // Log activity
+    await ActivityLog.create({
+      user: req.user.id,
+      action: 'deleted',
+      entityType: 'project',
+      entityId: req.params.id,
+      entityName: project.name,
+    });
 
     res.json({
       success: true,
-      message: 'Project deleted successfully',
+      message: 'Project and all associated data deleted successfully',
     });
   } catch (error) {
     next(error);

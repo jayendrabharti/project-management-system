@@ -31,6 +31,14 @@ const projectSchema = new Schema<IProject>(
         ref: 'User',
       },
     ],
+    color: {
+      type: String,
+      default: '#7c3aed',
+    },
+    icon: {
+      type: String,
+      default: '📁',
+    },
   },
   {
     timestamps: true,

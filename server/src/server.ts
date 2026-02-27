@@ -11,6 +11,8 @@ import userRoutes from './routes/user.routes';
 import commentRoutes from './routes/comment.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import searchRoutes from './routes/search.routes';
+import activityRoutes from './routes/activity.routes';
+import { seedDatabase } from './scripts/seed';
 dotenv.config();
 
 // Create Express app
@@ -48,6 +50,17 @@ app.use('/api/users', userRoutes);
 app.use('/api', commentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/activity', activityRoutes);
+
+// Seed endpoint (for demo data population)
+app.post('/api/seed', async (_req: Request, res: Response) => {
+  try {
+    await seedDatabase(false); // false = don't exit process
+    res.json({ success: true, message: 'Demo data populated successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Seeding failed' });
+  }
+});
 
 // 404 handler
 app.use((_req: Request, res: Response) => {

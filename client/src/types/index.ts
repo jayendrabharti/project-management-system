@@ -1,8 +1,11 @@
 // User types
 export interface User {
+  _id: string;
   id: string;
   name: string;
   email: string;
+  avatar?: string;
+  role?: 'admin' | 'member';
   createdAt: string;
 }
 
@@ -14,6 +17,10 @@ export interface Project {
   status: 'active' | 'completed' | 'archived';
   owner: User | string;
   members: (User | string)[];
+  color: string;
+  icon: string;
+  taskCount?: number;
+  completedTaskCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,6 +30,8 @@ export interface CreateProjectData {
   description?: string;
   status?: 'active' | 'completed' | 'archived';
   members?: string[];
+  color?: string;
+  icon?: string;
 }
 
 export interface UpdateProjectData {
@@ -30,18 +39,31 @@ export interface UpdateProjectData {
   description?: string;
   status?: 'active' | 'completed' | 'archived';
   members?: string[];
+  color?: string;
+  icon?: string;
 }
 
 // Task types
+export interface Subtask {
+  _id: string;
+  title: string;
+  completed: boolean;
+}
+
 export interface Task {
   _id: string;
   title: string;
   description: string;
-  status: 'todo' | 'in-progress' | 'completed';
-  priority: 'low' | 'medium' | 'high';
+  status: 'todo' | 'in-progress' | 'in-review' | 'completed';
+  priority: 'urgent' | 'high' | 'medium' | 'low' | 'none';
   project: Project | string;
   assignedTo?: User | string;
+  createdBy?: User | string;
   dueDate?: string;
+  labels: string[];
+  tags: string[];
+  subtasks: Subtask[];
+  order: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,20 +71,40 @@ export interface Task {
 export interface CreateTaskData {
   title: string;
   description?: string;
-  status?: 'todo' | 'in-progress' | 'completed';
-  priority?: 'low' | 'medium' | 'high';
-  project: string;
+  status?: 'todo' | 'in-progress' | 'in-review' | 'completed';
+  priority?: 'urgent' | 'high' | 'medium' | 'low' | 'none';
+  project?: string;
   assignedTo?: string;
   dueDate?: string;
+  labels?: string[];
+  tags?: string[];
+  subtasks?: { title: string; completed?: boolean }[];
 }
 
 export interface UpdateTaskData {
   title?: string;
   description?: string;
-  status?: 'todo' | 'in-progress' | 'completed';
-  priority?: 'low' | 'medium' | 'high';
-  assignedTo?: string;
-  dueDate?: string;
+  status?: 'todo' | 'in-progress' | 'in-review' | 'completed';
+  priority?: 'urgent' | 'high' | 'medium' | 'low' | 'none';
+  assignedTo?: string | null;
+  dueDate?: string | null;
+  labels?: string[];
+  tags?: string[];
+  subtasks?: { title: string; completed?: boolean }[];
+  order?: number;
+}
+
+// Activity types
+export interface ActivityLog {
+  _id: string;
+  user: User;
+  action: string;
+  entityType: 'task' | 'project' | 'comment';
+  entityId: string;
+  entityName: string;
+  projectId?: string;
+  details?: string;
+  createdAt: string;
 }
 
 // Auth types
