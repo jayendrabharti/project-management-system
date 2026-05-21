@@ -125,6 +125,90 @@ pnpm build
 pnpm start
 ```
 
+## 🐳 Docker Deployment
+
+The fastest way to run the full stack is with Docker Compose. This starts MongoDB, the Express API, and the React frontend — all wired together.
+
+### Prerequisites
+
+- Docker >= 24
+- Docker Compose v2 (`docker compose` command)
+
+### Quick Start
+
+1. **Clone the repository and enter the directory:**
+
+   ```bash
+   git clone <repository-url>
+   cd project-management-system
+   ```
+
+2. **Set required environment variables** (create a `.env` file at the repo root):
+
+   ```env
+   JWT_SECRET=replace-with-a-long-random-string
+   CORS_ORIGIN=http://localhost
+   VITE_API_URL=http://localhost:5000/api
+   ```
+
+3. **Build and start all services:**
+
+   ```bash
+   docker compose up --build
+   ```
+
+   | Service | URL |
+   |---------|-----|
+   | Frontend (React) | http://localhost |
+   | Backend API | http://localhost:5000 |
+   | MongoDB | localhost:27017 |
+
+4. **Stop the stack:**
+
+   ```bash
+   docker compose down
+   ```
+
+   To also remove the MongoDB data volume:
+
+   ```bash
+   docker compose down -v
+   ```
+
+### Building Individual Images
+
+**Server:**
+
+```bash
+cd server
+docker build -t pms-server .
+docker run -p 5000:5000 \
+  -e DATABASE_URL=mongodb://<mongo-host>:27017/project-management \
+  -e JWT_SECRET=your-secret \
+  -e CORS_ORIGIN=http://localhost \
+  pms-server
+```
+
+**Client:**
+
+```bash
+cd client
+docker build --build-arg VITE_API_URL=http://localhost:5000/api -t pms-client .
+docker run -p 80:80 pms-client
+```
+
+### Deploying to a Remote Server
+
+When deploying to a server with a public domain, set `VITE_API_URL` to your server's public API URL before building the client image, since the URL is baked into the static bundle at build time:
+
+```env
+VITE_API_URL=https://api.yourdomain.com/api
+CORS_ORIGIN=https://yourdomain.com
+JWT_SECRET=<strong-random-secret>
+```
+
+Then run `docker compose up --build -d` to rebuild with the new values.
+
 ## 🔑 Features
 
 - ✅ User authentication (Register/Login) with JWT

@@ -1,73 +1,65 @@
-# React + TypeScript + Vite
+# Client — React + TypeScript + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 frontend for the project management system. Built with Vite, Tailwind CSS v4, shadcn/ui, and React Router v7.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Node.js >= 18.0.0
 
-## React Compiler
+## Environment Variables
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+Copy `.env.example` to `.env` and set the API URL:
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
+```env
+VITE_API_URL=http://localhost:5000/api
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+> `VITE_*` variables are **build-time** — they get baked into the static bundle. Change this before building for a different environment.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x';
-import reactDom from 'eslint-plugin-react-dom';
+## Running Locally
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
+**Install dependencies:**
+
+```bash
+npm install
 ```
+
+**Start the development server** (hot-reload on `http://localhost:3000`):
+
+```bash
+npm run dev
+```
+
+**Build for production:**
+
+```bash
+npm run build
+```
+
+**Preview the production build locally:**
+
+```bash
+npm run preview
+```
+
+## Docker
+
+The client Dockerfile uses a multi-stage build: Node builds the Vite app, then Nginx serves the static files.
+
+**Build the image** (pass the API URL as a build argument):
+
+```bash
+docker build \
+  --build-arg VITE_API_URL=http://your-server-host:5000/api \
+  -t pms-client .
+```
+
+**Run the container:**
+
+```bash
+docker run -p 80:80 pms-client
+```
+
+The app is served at `http://localhost`.
+
+> For the full stack (client + server + MongoDB), use the root-level `docker-compose.yml`.
