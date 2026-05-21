@@ -157,11 +157,11 @@ The fastest way to run the full stack is with Docker Compose. This starts MongoD
    docker compose up --build
    ```
 
-   | Service | URL |
-   |---------|-----|
-   | Frontend (React) | http://localhost |
-   | Backend API | http://localhost:5000 |
-   | MongoDB | localhost:27017 |
+   | Service          | URL                   |
+   | ---------------- | --------------------- |
+   | Frontend (React) | http://localhost      |
+   | Backend API      | http://localhost:5000 |
+   | MongoDB          | localhost:27017       |
 
 4. **Stop the stack:**
 
@@ -183,7 +183,8 @@ The fastest way to run the full stack is with Docker Compose. This starts MongoD
 cd server
 docker build -t pms-server .
 docker run -p 5000:5000 \
-  -e DATABASE_URL=mongodb://<mongo-host>:27017/project-management \
+  -e PORT=5000 \
+  -e DATABASE_URL=mongodb://host.docker.internal:27017/project-management \
   -e JWT_SECRET=your-secret \
   -e CORS_ORIGIN=http://localhost \
   pms-server

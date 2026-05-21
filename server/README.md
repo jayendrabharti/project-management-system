@@ -60,7 +60,8 @@ docker build -t pms-server .
 
 ```bash
 docker run -p 5000:5000 \
-  -e DATABASE_URL=mongodb://<mongo-host>:27017/project-management \
+  -e PORT=5000 \
+  -e DATABASE_URL=mongodb://host.docker.internal:27017/project-management \
   -e JWT_SECRET=your-secret \
   -e CORS_ORIGIN=http://localhost \
   pms-server

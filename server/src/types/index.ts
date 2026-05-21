@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 export interface IUser extends Document {
   name: string;
@@ -24,7 +24,7 @@ export interface IProject extends Document {
   updatedAt: Date;
 }
 
-export interface ISubtask {
+export interface ISubtask extends Document {
   title: string;
   completed: boolean;
 }
@@ -40,7 +40,7 @@ export interface ITask extends Document {
   dueDate?: Date;
   labels: string[];
   tags: string[];
-  subtasks: ISubtask[];
+  subtasks: Types.DocumentArray<ISubtask>;
   order: number;
   createdAt: Date;
   updatedAt: Date;

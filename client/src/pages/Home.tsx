@@ -92,15 +92,6 @@ export default function Home() {
     return map[priority] || map.none;
   };
 
-  const getStatusColor = (status: string) => {
-    const map: Record<string, string> = {
-      todo: 'bg-muted text-muted-foreground',
-      'in-progress': 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
-      'in-review': 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-      completed: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-    };
-    return map[status] || '';
-  };
 
   const stats = [
     {

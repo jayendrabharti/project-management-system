@@ -26,18 +26,6 @@ const users = [
   { name: 'Meera Joshi', email: 'meera@example.com', password: 'password123', role: 'member' },
 ];
 
-const projectColors = [
-  '#7c3aed',
-  '#3b82f6',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#06b6d4',
-  '#ec4899',
-  '#8b5cf6',
-];
-const projectIcons = ['🚀', '📱', '🛒', '📊', '☁️', '🔒', '🎨', '⚡', '📝', '🔧'];
-
 const projectTemplates = [
   {
     name: 'E-Commerce Platform v2.0',
@@ -119,21 +107,6 @@ const projectTemplates = [
     icon: '📝',
     color: '#6b7280',
   },
-];
-
-const labelSets = [
-  ['bug', 'frontend'],
-  ['feature', 'backend'],
-  ['improvement', 'ui/ux'],
-  ['bug', 'critical'],
-  ['feature', 'api'],
-  ['documentation'],
-  ['testing'],
-  ['devops', 'infrastructure'],
-  ['design', 'ui/ux'],
-  ['performance'],
-  ['security'],
-  ['feature', 'frontend'],
 ];
 
 const taskTemplates = [

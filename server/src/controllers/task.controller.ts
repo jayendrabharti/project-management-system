@@ -315,7 +315,7 @@ export const toggleSubtask = async (
       return;
     }
 
-    const subtask = task.subtasks.id(subtaskId);
+    const subtask = task.subtasks.id(subtaskId as string);
     if (!subtask) {
       res.status(404).json({ success: false, message: 'Subtask not found' });
       return;
